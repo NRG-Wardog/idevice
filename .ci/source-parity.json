@@ -1,0 +1,93 @@
+{
+  "owner": "idevice",
+  "upstream_base": "ebd7dadfc55d1c4facee3d11ecf5b28e20548b57",
+  "fork_commit": "764e139cb55d0b665aafd609118deb2e9753d1d9",
+  "branch": "migration/runtime-source-141776ba",
+  "behavior_differences": [],
+  "files": [
+    {
+      "path": "idevice/src/tunnel.rs",
+      "upstream_sha256": "817f1b070ec139dd9d1fcfd054a3c9f317f4fcddb0a234945cbe2470e27ce380",
+      "old_generated_sha256": "78ecf7ea51660f27bd78892e9d8f493846e8a98be364a63803d804f139461b8d",
+      "new_source_sha256": "78ecf7ea51660f27bd78892e9d8f493846e8a98be364a63803d804f139461b8d",
+      "mode": "0o644",
+      "subsystem": "Maintain contiguous CoreDevice tunnel handshake",
+      "commit": "6c6bfe3d3d2625c602c57b0e26afff84cf38aa59",
+      "git_mode": "100644"
+    },
+    {
+      "path": "ffi/src/afc.rs",
+      "upstream_sha256": "71447c2547963cc417084039739cacaef9a6e45e6d348b1cfa667dcd823ff35e",
+      "old_generated_sha256": "f9fabb41e267c85891eac80aba562fe7ff913b2e8ece2e619086bdca9a6b5cda",
+      "new_source_sha256": "f9fabb41e267c85891eac80aba562fe7ff913b2e8ece2e619086bdca9a6b5cda",
+      "mode": "0o644",
+      "subsystem": "Maintain local AFC runtime and FFI allocation ownership",
+      "commit": "80f24024ffec5eb8281dab165958427acc4dea1a",
+      "git_mode": "100644"
+    },
+    {
+      "path": "ffi/src/lib.rs",
+      "upstream_sha256": "8f00eec43ecb6f014d735014737192ab7c131c3554b3c5f807082083f7a458db",
+      "old_generated_sha256": "954b294a47bc172531c3e35aab59bc84d8d7e6682dc384fafe576c2095674dd1",
+      "new_source_sha256": "954b294a47bc172531c3e35aab59bc84d8d7e6682dc384fafe576c2095674dd1",
+      "mode": "0o644",
+      "subsystem": "Maintain local AFC runtime and FFI allocation ownership",
+      "commit": "80f24024ffec5eb8281dab165958427acc4dea1a",
+      "git_mode": "100644"
+    },
+    {
+      "path": "ffi/src/tunnel_provider.rs",
+      "upstream_sha256": "63bd51e11344d08c07f33041a74175ed2f3718bc15c992455acd478384992bf5",
+      "old_generated_sha256": "61e090ea9c1e2e75d2fb8f355965e929ed35a0a4f5e9471f9949c7504c3356f0",
+      "new_source_sha256": "61e090ea9c1e2e75d2fb8f355965e929ed35a0a4f5e9471f9949c7504c3356f0",
+      "mode": "0o644",
+      "subsystem": "Maintain CoreDevice heartbeat and callback lifetimes",
+      "commit": "b7de2425e2c14a5decc271b582b22ae0f47b0c3d",
+      "git_mode": "100644"
+    },
+    {
+      "path": "ffi/src/core_device_proxy.rs",
+      "upstream_sha256": "d609b8d3ea964829c9635f9b5a74693be7fe7581f9a7afe91de8a807476dfc16",
+      "old_generated_sha256": "eae6645531b9544aeb339a724057817b6a27f05d0bb73fc107b3c1a1aab5313b",
+      "new_source_sha256": "eae6645531b9544aeb339a724057817b6a27f05d0bb73fc107b3c1a1aab5313b",
+      "mode": "0o644",
+      "subsystem": "Maintain CoreDevice heartbeat and callback lifetimes",
+      "commit": "b7de2425e2c14a5decc271b582b22ae0f47b0c3d",
+      "git_mode": "100644"
+    },
+    {
+      "path": "idevice/Cargo.toml",
+      "upstream_sha256": "5035ad9f2274dca3adab663a43792103766b92af00920bd96d83bf9c06e0d61b",
+      "old_generated_sha256": "68496dc1f0c3dd3bbb62b952ecfe472f17d8a0a5cabfed14f68468a801df0b88",
+      "new_source_sha256": "68496dc1f0c3dd3bbb62b952ecfe472f17d8a0a5cabfed14f68468a801df0b88",
+      "mode": "0o644",
+      "subsystem": "Maintain exact local jktcp dependency identity",
+      "commit": "c00dcc6c1a789975f250678ab438a0287079b0e4",
+      "git_mode": "100644"
+    },
+    {
+      "path": "Cargo.lock",
+      "upstream_sha256": "f6cb7304f4d9021380863c9931a7cf07e6b68fb0876eaf9157488977a5edc5df",
+      "old_generated_sha256": "f346555891f0b1cf4670fdac9d8c3cbdb057d4f7bc883d229afae176a3978e39",
+      "new_source_sha256": "f346555891f0b1cf4670fdac9d8c3cbdb057d4f7bc883d229afae176a3978e39",
+      "mode": "0o644",
+      "subsystem": "Maintain exact local jktcp dependency identity",
+      "commit": "c00dcc6c1a789975f250678ab438a0287079b0e4",
+      "git_mode": "100644"
+    }
+  ],
+  "prepared_evidence_excluded": [],
+  "tests_run": [
+    "git diff --check",
+    "exact changed source byte and mode comparison"
+  ],
+  "tests_not_run": [
+    "Rust/Cargo build; cargo fmt and generated FFI headers"
+  ],
+  "source_parity_status": "exact_prepared_bytes_pass",
+  "metadata_files": [
+    "NOTICE-NRG-Wardog",
+    ".ci/source-parity.py",
+    ".ci/source-parity.json"
+  ]
+}
