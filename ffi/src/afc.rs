@@ -630,7 +630,7 @@ pub unsafe extern "C" fn afc_file_close(handle: *mut AfcFileHandle) -> *mut Idev
     }
 
     let fd = unsafe { Box::from_raw(handle as *mut idevice::afc::file::FileDescriptor) };
-    let res: Result<(), IdeviceError> = run_sync(async move { fd.close().await });
+    let res: Result<(), IdeviceError> = run_sync_local(async move { fd.close().await });
 
     match res {
         Ok(_) => null_mut(),
@@ -663,7 +663,7 @@ pub unsafe extern "C" fn afc_file_read(
     }
 
     let fd = unsafe { &mut *(handle as *mut FileDescriptor) };
-    let res: Result<Vec<u8>, IdeviceError> = run_sync({
+    let res: Result<Vec<u8>, IdeviceError> = run_sync_local({
         let mut buf = vec![0u8; len];
         async move {
             let r = fd.read(&mut buf).await?;
@@ -709,7 +709,7 @@ pub unsafe extern "C" fn afc_file_read_entire(
     }
 
     let fd = unsafe { &mut *(handle as *mut idevice::afc::file::FileDescriptor) };
-    let res: Result<Vec<u8>, IdeviceError> = run_sync(async move { fd.read_entire().await });
+    let res: Result<Vec<u8>, IdeviceError> = run_sync_local(async move { fd.read_entire().await });
 
     match res {
         Ok(bytes) => {
@@ -766,7 +766,7 @@ pub unsafe extern "C" fn afc_file_seek(
         _ => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
-    let res: Result<u64, IdeviceError> = run_sync(async move { Ok(fd.seek(seek_from).await?) });
+    let res: Result<u64, IdeviceError> = run_sync_local(async move { Ok(fd.seek(seek_from).await?) });
 
     match res {
         Ok(pos) => {
@@ -806,7 +806,7 @@ pub unsafe extern "C" fn afc_file_tell(
     let fd = unsafe { &mut *(handle as *mut FileDescriptor) };
 
     let res: Result<u64, IdeviceError> =
-        run_sync(async { Ok(fd.seek(SeekFrom::Current(0)).await?) });
+        run_sync_local(async { Ok(fd.seek(SeekFrom::Current(0)).await?) });
 
     match res {
         Ok(cur) => {
@@ -845,7 +845,7 @@ pub unsafe extern "C" fn afc_file_write(
     let fd = unsafe { &mut *(handle as *mut idevice::afc::file::FileDescriptor) };
     let data_slice = unsafe { std::slice::from_raw_parts(data, length) };
 
-    let res: Result<(), IdeviceError> = run_sync(async move { fd.write_entire(data_slice).await });
+    let res: Result<(), IdeviceError> = run_sync_local(async move { fd.write_entire(data_slice).await });
 
     match res {
         Ok(_) => null_mut(),

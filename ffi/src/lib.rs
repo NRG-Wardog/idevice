@@ -515,8 +515,9 @@ pub unsafe extern "C" fn idevice_data_free(data: *mut u8, len: usize) {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn idevice_plist_array_free(plists: *mut plist_t, len: usize) {
     if !plists.is_null() {
-        let data = unsafe { std::slice::from_raw_parts(plists, len) };
-        for x in data {
+        let slice = std::ptr::slice_from_raw_parts_mut(plists, len);
+        let data = unsafe { Box::from_raw(slice) };
+        for x in data.iter() {
             unsafe { plist_ffi::creation::plist_free((*x) as *mut PlistWrapper) };
         }
     }
