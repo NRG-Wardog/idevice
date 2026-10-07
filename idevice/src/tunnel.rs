@@ -51,9 +51,11 @@ impl<R: ReadWrite> CdTunnel<R> {
         });
         let body = serde_json::to_vec(&request)?;
 
-        stream.write_all(CDTUNNEL_MAGIC).await?;
-        stream.write_all(&(body.len() as u16).to_be_bytes()).await?;
-        stream.write_all(&body).await?;
+        let mut packet = Vec::with_capacity(CDTUNNEL_MAGIC.len() + 2 + body.len());
+        packet.extend_from_slice(CDTUNNEL_MAGIC);
+        packet.extend_from_slice(&(body.len() as u16).to_be_bytes());
+        packet.extend_from_slice(&body);
+        stream.write_all(&packet).await?;
         stream.flush().await?;
 
         debug!("Sent CDTunnel handshake request");
