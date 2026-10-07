@@ -25,6 +25,69 @@ use crate::run_global_timeout;
 use crate::util::{SockAddr, idevice_sockaddr, idevice_socklen_t};
 use crate::{IdeviceFfiError, ffi_err, provider::IdeviceProviderHandle, run_sync_local};
 
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use tokio::task::JoinHandle;
+
+static TRANSPORT_LOG_CALLBACK: Mutex<
+    Option<unsafe extern "C" fn(*const std::ffi::c_char)>,
+> = Mutex::new(None);
+
+/// Registers the host application's transport logger. The callback must remain
+/// valid until it is replaced or cleared.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn idevice_set_transport_log_callback(
+    callback: Option<unsafe extern "C" fn(*const std::ffi::c_char)>,
+) {
+    *TRANSPORT_LOG_CALLBACK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = callback;
+}
+
+/// Rust owns this symbol because both idevice and its static jktcp dependency
+/// call it. Keeping it in the same archive prevents an unresolved cross-library
+/// reference when Swift package objects are linked later.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lockdown_diag_rust_log(message: *const std::ffi::c_char) {
+    if message.is_null() {
+        return;
+    }
+
+    let callback = *TRANSPORT_LOG_CALLBACK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(callback) = callback {
+        unsafe { callback(message) };
+    } else if let Ok(message) = unsafe { std::ffi::CStr::from_ptr(message) }.to_str() {
+        tracing::debug!("{message}");
+    }
+}
+
+fn transport_log(message: &str) {
+    if let Ok(message) = std::ffi::CString::new(message) {
+        unsafe { lockdown_diag_rust_log(message.as_ptr()) };
+    }
+}
+
+static ACTIVE_HEARTBEAT: Mutex<Option<JoinHandle<()>>> = Mutex::new(None);
+static HEARTBEAT_IS_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tunnel_heartbeat_is_active() -> bool {
+    HEARTBEAT_IS_ACTIVE.load(Ordering::SeqCst)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tunnel_heartbeat_stop() {
+    let mut heartbeat = ACTIVE_HEARTBEAT.lock().unwrap();
+    if let Some(handle) = heartbeat.take() {
+        handle.abort();
+    }
+    HEARTBEAT_IS_ACTIVE.store(false, Ordering::SeqCst);
+    transport_log("[SIDESTORE_COREDEVICE] HEARTBEAT_STOPPED");
+}
+
+
 struct PinCtx(*mut c_void);
 unsafe impl Send for PinCtx {}
 unsafe impl Sync for PinCtx {}
@@ -103,17 +166,126 @@ pub unsafe extern "C" fn tunnel_create_usb(
 
     let res = run_sync_local(async {
         let provider_ref: &dyn IdeviceProvider = unsafe { &*(*lockdown_provider).0 };
-        let proxy = CoreDeviceProxy::connect(provider_ref).await?;
+
+        unsafe { tunnel_heartbeat_stop() };
+        use idevice::heartbeat::HeartbeatClient;
+        let mut heartbeat = match HeartbeatClient::connect(provider_ref).await {
+            Ok(client) => {
+                transport_log("[SIDESTORE_COREDEVICE] HEARTBEAT_CONNECT_PASS");
+                client
+            }
+            Err(error) => {
+                transport_log("[SIDESTORE_COREDEVICE] HEARTBEAT_CONNECT_FAIL stage=heartbeat result=failed");
+                return Err(IdeviceError::InternalError(format!(
+                    "CoreDevice heartbeat connection failed: {error}"
+                )));
+            }
+        };
+
+        HEARTBEAT_IS_ACTIVE.store(true, Ordering::SeqCst);
+        let heartbeat_task = tokio::spawn(async move {
+            loop {
+                match heartbeat.get_marco(60).await {
+                    Ok(_) => {
+                        if let Err(_error) = heartbeat.send_polo().await {
+                            transport_log("[SIDESTORE_COREDEVICE] HEARTBEAT_POLO_FAIL stage=heartbeat result=failed");
+                            break;
+                        }
+                    }
+                    Err(_error) => {
+                        transport_log("[SIDESTORE_COREDEVICE] HEARTBEAT_MARCO_FAIL stage=heartbeat result=failed");
+                        break;
+                    }
+                }
+            }
+            HEARTBEAT_IS_ACTIVE.store(false, Ordering::SeqCst);
+        });
+        *ACTIVE_HEARTBEAT.lock().unwrap() = Some(heartbeat_task);
+
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        transport_log("[SIDESTORE_COREDEVICE] TUNNEL_COREDEVICE_CONNECT_START");
+        let proxy = match tokio::time::timeout(
+            std::time::Duration::from_secs(20),
+            CoreDeviceProxy::connect(provider_ref),
+        )
+        .await
+        {
+            Ok(Ok(proxy)) => {
+                transport_log("[SIDESTORE_COREDEVICE] TUNNEL_COREDEVICE_CONNECT_PASS");
+                proxy
+            }
+            Ok(Err(error)) => {
+                unsafe { tunnel_heartbeat_stop() };
+                return Err(error);
+            }
+            Err(_) => {
+                unsafe { tunnel_heartbeat_stop() };
+                return Err(IdeviceError::InternalError(
+                    "CoreDeviceProxy connect timed out after 20 seconds".into(),
+                ));
+            }
+        };
+
+        let negotiated_mtu = proxy.tunnel_info().mtu as usize;
         let rsd_port = proxy.tunnel_info().server_rsd_port;
-        let adapter = proxy
-            .create_software_tunnel()
-            .map_err(|e| IdeviceError::InternalError(format!("{e}")))?;
+        let mut adapter = match proxy.create_software_tunnel() {
+            Ok(adapter) => adapter,
+            Err(error) => {
+                unsafe { tunnel_heartbeat_stop() };
+                return Err(IdeviceError::InternalError(format!(
+                    "CoreDevice software tunnel failed: {error}"
+                )));
+            }
+        };
+
+        // Apple CoreDeviceProxy drops large host-to-device IPv6 packets even
+        // when it advertises a 16 KB tunnel MTU. jktcp has no PLPMTUD, so use
+        // the reliable 1400-byte IPv6 MTU seed (1340-byte TCP MSS).
+        let effective_mss = negotiated_mtu.saturating_sub(60).min(1340);
+        adapter.set_mss(effective_mss);
+        transport_log(&format!(
+            "[SIDESTORE_COREDEVICE] JKTCP_MSS_CONFIG negotiated_mtu={negotiated_mtu} effective_mss={effective_mss}"
+        ));
         let mut adapter = adapter.to_async_handle();
-        let rsd_stream = adapter
-            .connect(rsd_port)
-            .await
-            .map_err(|e| IdeviceError::InternalError(format!("{e}")))?;
-        let handshake = RsdHandshake::new(rsd_stream).await?;
+
+        let rsd_stream = match tokio::time::timeout(
+            std::time::Duration::from_secs(12),
+            adapter.connect(rsd_port),
+        )
+        .await
+        {
+            Ok(Ok(stream)) => stream,
+            Ok(Err(error)) => {
+                unsafe { tunnel_heartbeat_stop() };
+                return Err(IdeviceError::InternalError(format!("RSD connect failed: {error}")));
+            }
+            Err(_) => {
+                unsafe { tunnel_heartbeat_stop() };
+                return Err(IdeviceError::InternalError(
+                    "RSD connect timed out after 12 seconds".into(),
+                ));
+            }
+        };
+
+        let handshake = match tokio::time::timeout(
+            std::time::Duration::from_secs(15),
+            RsdHandshake::new(rsd_stream),
+        )
+        .await
+        {
+            Ok(Ok(handshake)) => handshake,
+            Ok(Err(error)) => {
+                unsafe { tunnel_heartbeat_stop() };
+                return Err(error);
+            }
+            Err(_) => {
+                unsafe { tunnel_heartbeat_stop() };
+                return Err(IdeviceError::InternalError(
+                    "RSD handshake timed out after 15 seconds".into(),
+                ));
+            }
+        };
+        transport_log("[SIDESTORE_COREDEVICE] TUNNEL_RSD_HANDSHAKE_PASS");
         Ok::<_, IdeviceError>((adapter, handshake))
     });
 

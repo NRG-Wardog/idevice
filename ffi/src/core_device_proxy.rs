@@ -353,6 +353,7 @@ pub unsafe extern "C" fn core_device_proxy_free(handle: *mut CoreDeviceProxyHand
 pub unsafe extern "C" fn adapter_free(handle: *mut AdapterHandle) {
     if !handle.is_null() {
         tracing::debug!("Freeing adapter");
+        crate::tunnel_provider::tunnel_heartbeat_stop();
         let _ = unsafe { Box::from_raw(handle) };
     }
 }
