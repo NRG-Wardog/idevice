@@ -29,9 +29,8 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::task::JoinHandle;
 
-static TRANSPORT_LOG_CALLBACK: Mutex<
-    Option<unsafe extern "C" fn(*const std::ffi::c_char)>,
-> = Mutex::new(None);
+static TRANSPORT_LOG_CALLBACK: Mutex<Option<unsafe extern "C" fn(*const std::ffi::c_char)>> =
+    Mutex::new(None);
 
 /// Registers the host application's transport logger. The callback must remain
 /// valid until it is replaced or cleared.
@@ -86,7 +85,6 @@ pub unsafe extern "C" fn tunnel_heartbeat_stop() {
     HEARTBEAT_IS_ACTIVE.store(false, Ordering::SeqCst);
     transport_log("[SIDESTORE_COREDEVICE] HEARTBEAT_STOPPED");
 }
-
 
 struct PinCtx(*mut c_void);
 unsafe impl Send for PinCtx {}
@@ -175,7 +173,9 @@ pub unsafe extern "C" fn tunnel_create_usb(
                 client
             }
             Err(error) => {
-                transport_log("[SIDESTORE_COREDEVICE] HEARTBEAT_CONNECT_FAIL stage=heartbeat result=failed");
+                transport_log(
+                    "[SIDESTORE_COREDEVICE] HEARTBEAT_CONNECT_FAIL stage=heartbeat result=failed",
+                );
                 return Err(IdeviceError::InternalError(format!(
                     "CoreDevice heartbeat connection failed: {error}"
                 )));
@@ -188,12 +188,16 @@ pub unsafe extern "C" fn tunnel_create_usb(
                 match heartbeat.get_marco(60).await {
                     Ok(_) => {
                         if let Err(_error) = heartbeat.send_polo().await {
-                            transport_log("[SIDESTORE_COREDEVICE] HEARTBEAT_POLO_FAIL stage=heartbeat result=failed");
+                            transport_log(
+                                "[SIDESTORE_COREDEVICE] HEARTBEAT_POLO_FAIL stage=heartbeat result=failed",
+                            );
                             break;
                         }
                     }
                     Err(_error) => {
-                        transport_log("[SIDESTORE_COREDEVICE] HEARTBEAT_MARCO_FAIL stage=heartbeat result=failed");
+                        transport_log(
+                            "[SIDESTORE_COREDEVICE] HEARTBEAT_MARCO_FAIL stage=heartbeat result=failed",
+                        );
                         break;
                     }
                 }
@@ -257,7 +261,9 @@ pub unsafe extern "C" fn tunnel_create_usb(
             Ok(Ok(stream)) => stream,
             Ok(Err(error)) => {
                 unsafe { tunnel_heartbeat_stop() };
-                return Err(IdeviceError::InternalError(format!("RSD connect failed: {error}")));
+                return Err(IdeviceError::InternalError(format!(
+                    "RSD connect failed: {error}"
+                )));
             }
             Err(_) => {
                 unsafe { tunnel_heartbeat_stop() };

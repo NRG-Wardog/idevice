@@ -766,7 +766,8 @@ pub unsafe extern "C" fn afc_file_seek(
         _ => return ffi_err!(IdeviceError::FfiInvalidArg),
     };
 
-    let res: Result<u64, IdeviceError> = run_sync_local(async move { Ok(fd.seek(seek_from).await?) });
+    let res: Result<u64, IdeviceError> =
+        run_sync_local(async move { Ok(fd.seek(seek_from).await?) });
 
     match res {
         Ok(pos) => {
@@ -845,7 +846,8 @@ pub unsafe extern "C" fn afc_file_write(
     let fd = unsafe { &mut *(handle as *mut idevice::afc::file::FileDescriptor) };
     let data_slice = unsafe { std::slice::from_raw_parts(data, length) };
 
-    let res: Result<(), IdeviceError> = run_sync_local(async move { fd.write_entire(data_slice).await });
+    let res: Result<(), IdeviceError> =
+        run_sync_local(async move { fd.write_entire(data_slice).await });
 
     match res {
         Ok(_) => null_mut(),

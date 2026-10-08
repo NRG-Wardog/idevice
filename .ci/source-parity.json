@@ -19,7 +19,7 @@
       "path": "ffi/src/afc.rs",
       "upstream_sha256": "71447c2547963cc417084039739cacaef9a6e45e6d348b1cfa667dcd823ff35e",
       "old_generated_sha256": "f9fabb41e267c85891eac80aba562fe7ff913b2e8ece2e619086bdca9a6b5cda",
-      "new_source_sha256": "f9fabb41e267c85891eac80aba562fe7ff913b2e8ece2e619086bdca9a6b5cda",
+      "new_source_sha256": "508090fe4eae454a11d961831665965f6462fd328f7ad76a4a3ab004671a33d2",
       "mode": "0o644",
       "subsystem": "Maintain local AFC runtime and FFI allocation ownership",
       "commit": "80f24024ffec5eb8281dab165958427acc4dea1a",
@@ -39,7 +39,7 @@
       "path": "ffi/src/tunnel_provider.rs",
       "upstream_sha256": "63bd51e11344d08c07f33041a74175ed2f3718bc15c992455acd478384992bf5",
       "old_generated_sha256": "61e090ea9c1e2e75d2fb8f355965e929ed35a0a4f5e9471f9949c7504c3356f0",
-      "new_source_sha256": "61e090ea9c1e2e75d2fb8f355965e929ed35a0a4f5e9471f9949c7504c3356f0",
+      "new_source_sha256": "c869d5c7ac0d68743223d627aa58fdecc397f7a97e073eaf3584046aff95891d",
       "mode": "0o644",
       "subsystem": "Maintain CoreDevice heartbeat and callback lifetimes",
       "commit": "b7de2425e2c14a5decc271b582b22ae0f47b0c3d",
@@ -79,15 +79,43 @@
   "prepared_evidence_excluded": [],
   "tests_run": [
     "git diff --check",
-    "exact changed source byte and mode comparison"
+    "exact changed source byte and mode comparison",
+    "Rust 1.98.1 cargo fmt --check --manifest-path idevice/ffi/Cargo.toml",
+    "all product bytes and modes equal independently formatted OLD generated source",
+    "Rust 1.98.1 cargo check --locked --manifest-path idevice/ffi/Cargo.toml --features obfuscate: passed with existing warnings"
   ],
   "tests_not_run": [
-    "Rust/Cargo build; cargo fmt and generated FFI headers"
+    "macOS/iOS native build on the formatted owner commit"
   ],
-  "source_parity_status": "exact_prepared_bytes_pass",
+  "source_parity_status": "formatted_prepared_bytes_pass",
   "metadata_files": [
     "NOTICE-NRG-Wardog",
     ".ci/source-parity.py",
     ".ci/source-parity.json"
-  ]
+  ],
+  "formatting_transition": {
+    "previous_owner_commit": "0182d7d8ce0c8bbeb440adbc989d88dc1d4c0789",
+    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+    "cargo": "cargo 1.98.1 (797e8a9bc 2026-08-05)",
+    "rustfmt": "rustfmt 1.9.0-stable (48a229ceae 2026-09-01)",
+    "command": "cargo fmt --manifest-path idevice/ffi/Cargo.toml",
+    "source_basis": "Both the frozen OLD generated tree and the previous maintained owner were formatted independently with the pinned formatter; every product blob, symlink and gitlink matches afterward.",
+    "previous_status": "exact_prepared_bytes_pass",
+    "product_entries_compared": 453,
+    "changed_files": [
+      {
+        "path": "ffi/src/afc.rs",
+        "old_generated_sha256": "f9fabb41e267c85891eac80aba562fe7ff913b2e8ece2e619086bdca9a6b5cda",
+        "formatted_sha256": "508090fe4eae454a11d961831665965f6462fd328f7ad76a4a3ab004671a33d2",
+        "git_mode": "100644"
+      },
+      {
+        "path": "ffi/src/tunnel_provider.rs",
+        "old_generated_sha256": "61e090ea9c1e2e75d2fb8f355965e929ed35a0a4f5e9471f9949c7504c3356f0",
+        "formatted_sha256": "c869d5c7ac0d68743223d627aa58fdecc397f7a97e073eaf3584046aff95891d",
+        "git_mode": "100644"
+      }
+    ],
+    "behavior_differences": []
+  }
 }
