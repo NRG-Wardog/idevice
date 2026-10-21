@@ -11,8 +11,11 @@
     ],
     "full_history_required": true,
     "jktcp_pin": "32c0210f286b4fd16efe05be4f57167a9d94459b",
-    "candidate_commit_status": "pending_root_owned_two_parent_commit",
-    "compatibility_registry_status": "pending_exact_new_owner_commit_and_manifest_digest_binding"
+    "candidate_commit_status": "original_reviewed_two_parent_merge_published",
+    "compatibility_registry_status": "pending_exact_new_owner_commit_and_manifest_digest_binding",
+    "commit_role": "historical_reviewed_merge_anchor_not_current_head",
+    "commit": "f9eebbbeb83d92565204b53f2a317b0a29999b79",
+    "tree": "8e05455f44fc3a9311e741e3ffa7d97d7df945fe"
   },
   "migration_provenance": {
     "previous_manifest_commit": "803f9368e6b27a43d8a9f22dc0ec281c87883113",
@@ -26,7 +29,7 @@
   "behavior_differences": [
     "Preserve the NRG contiguous CoreDevice handshake, heartbeat lifecycle and timeout handling, 1340-byte TCP MSS ceiling, and transport logging callback.",
     "Preserve maintained AFC and plist-array allocation ownership and stop the heartbeat when freeing the adapter.",
-    "Retain exact local-path jktcp 0.1.6 from the separately pinned NRG owner instead of the upstream registry dependency.",
+    "Retain exact local-path jktcp 0.1.8 from the separately pinned NRG owner instead of the upstream registry dependency.",
     "Return pairable-host TXT bytes using an exact-sized allocation compatible with the existing idevice_data_free ABI.",
     "Allocate optional network-pairing peer C strings only when out_peer_device requests ownership.",
     "Redact newly introduced Rust provider, pairing, personalization, nonce and incidental path diagnostics, including raw Result panic details; preserve pre-existing NRG diagnostics."
@@ -40,15 +43,16 @@
     {
       "path": "Cargo.lock",
       "upstream_sha256": "3c1a7710f0cd02f9100e91b97c9f8abc6546f115f7f3255551c990628aea0e16",
-      "new_source_sha256": "fb66e7730952cc0e07e4a7b000aab461ebd5fca96b20afd0ab8798175d736492",
+      "new_source_sha256": "1ee8d1109a020685777054a73ea8ba52113b0e3509682a167a7d8a9fa65fdb38",
       "git_mode": "100644",
       "previous_owner_sha256": "f346555891f0b1cf4670fdac9d8c3cbdb057d4f7bc883d229afae176a3978e39",
       "mode": "0o644",
-      "subsystem": "Maintain exact local jktcp dependency identity",
+      "subsystem": "Maintain the exact source-owned local jktcp 0.1.8 identity; no dependency or source fallback.",
       "migration_origin": {
         "commit": "c00dcc6c1a789975f250678ab438a0287079b0e4",
         "old_generated_sha256": "f346555891f0b1cf4670fdac9d8c3cbdb057d4f7bc883d229afae176a3978e39"
-      }
+      },
+      "follow_on_previous_owner_sha256": "fb66e7730952cc0e07e4a7b000aab461ebd5fca96b20afd0ab8798175d736492"
     },
     {
       "path": "ffi/src/afc.rs",
@@ -221,21 +225,16 @@
   ],
   "prepared_evidence_excluded": [],
   "tests_run": [
-    "Static source review: exact candidate inventory and modes match the new upstream plus the exact reviewed frozen custom product paths and the existing metadata inventory.",
-    "Static preservation checks: all named NRG native functions and unaffected migrated source files preserve their prior implementation bytes.",
-    "Static FFI review: 104 used symbols, 215 direct call arities and 51 typed connector/cleanup reference sites match the minimuxer source candidate.",
-    "git diff --check against previous owner: passed before the metadata-only transition.",
-    "Full local source history and both previous-head and upstream ancestry from the recorded common base: verified.",
-    "Static introduced-log audit against prior owner: passed; no native code executed.",
-    "Static actual-CI feature/cfg review: all six new/changed pairing exports enabled under default features plus obfuscate for aarch64-apple-ios; binary presence pending compile-only CI."
+    "Exact restored prior manifest hash matches the previously bound owner metadata.",
+    "TOML comparison proves the only Cargo.lock product edit is the single source-less local jktcp package version 0.1.6 to 0.1.8; dependency entries are unchanged.",
+    "The idevice/Cargo.toml local path, optional and default-features fields remain byte-identical to the previous owner.",
+    "Source-parity product rows preserve all previous hashes except the one exact new Cargo.lock digest; the existing verifier is unchanged."
   ],
   "tests_not_run": [
-    "Unchanged committed source-parity verifier against a new owner HEAD: no candidate commit exists.",
-    "Rust cargo check/test/build, rustfmt, cbindgen header generation or native link checks: no compiler execution.",
-    "macOS/iOS native builds, native fixtures, device pairing, authentication and runtime validation.",
-    "Actual generated archive/framework nm symbols and generated C header type/layout assertions: gate prepared but not executed."
+    "Cargo resolver/check/build/test, Rust/native fixtures, device pairing and sign-in execution.",
+    "Full owner verifier on the actual follow-on HEAD and real locked compile-only CI."
   ],
-  "source_parity_status": "reviewed_sync_candidate_pending_commit_parity_validation",
+  "source_parity_status": "reviewed_dependency_identity_follow_on_pending_commit_parity_and_locked_ci",
   "metadata_files": [
     "NOTICE-NRG-Wardog",
     ".ci/source-parity.py",
@@ -257,5 +256,53 @@
     ],
     "export_count": 6,
     "binary_and_header_verification": "Pending root-owned compile-only CI nm and generated-header checks; no native execution."
+  },
+  "follow_on": {
+    "purpose": "Align the unchanged local-path dependency with the separately reviewed jktcp 0.1.8 owner.",
+    "previous_owner_commit": "f9eebbbeb83d92565204b53f2a317b0a29999b79",
+    "required_commit_parents": [
+      "f9eebbbeb83d92565204b53f2a317b0a29999b79"
+    ],
+    "merge_anchor": {
+      "commit": "f9eebbbeb83d92565204b53f2a317b0a29999b79",
+      "tree": "8e05455f44fc3a9311e741e3ffa7d97d7df945fe",
+      "required_commit_parents": [
+        "803f9368e6b27a43d8a9f22dc0ec281c87883113",
+        "3e55c8486b2057e40c1f74aaaa1155c82341cf76"
+      ],
+      "merge_base": "ebd7dadfc55d1c4facee3d11ecf5b28e20548b57"
+    },
+    "previous_manifest_sha256": "b379a775e4c80026a27e7afd4769fed8354dfc73b1bc7ce001a219d41fb5d2ac",
+    "previous_cargo_lock_sha256": "fb66e7730952cc0e07e4a7b000aab461ebd5fca96b20afd0ab8798175d736492",
+    "new_cargo_lock_sha256": "1ee8d1109a020685777054a73ea8ba52113b0e3509682a167a7d8a9fa65fdb38",
+    "jktcp_pin": "a46594f6af56b66b6d9342ed9f5ee6d1b7fb9cc9",
+    "jktcp_tree": "5c7f972334bd4dccc10e03a63cbd19cccd2a354a",
+    "jktcp_source_manifest_sha256": "0d0cc3754b7045ecc7df05ed551be923a053cc9eb8ad5cb4e69b3557fd483bd4",
+    "old_package_version": "0.1.6",
+    "new_package_version": "0.1.8",
+    "cargo_manifest_unchanged": true,
+    "cargo_resolver_executed": false,
+    "dependency_entries_changed": false,
+    "native_execution": false,
+    "lock_edit_provenance": "Explicit source-owned package-identity metadata edit; not resolver-produced. Actual Cargo --locked admission is pending.",
+    "inherited_validation": {
+      "applies_only_to_commit": "f9eebbbeb83d92565204b53f2a317b0a29999b79",
+      "tests_run": [
+        "Static source review: exact candidate inventory and modes match the new upstream plus the exact reviewed frozen custom product paths and the existing metadata inventory.",
+        "Static preservation checks: all named NRG native functions and unaffected migrated source files preserve their prior implementation bytes.",
+        "Static FFI review: 104 used symbols, 215 direct call arities and 51 typed connector/cleanup reference sites match the minimuxer source candidate.",
+        "git diff --check against previous owner: passed before the metadata-only transition.",
+        "Full local source history and both previous-head and upstream ancestry from the recorded common base: verified.",
+        "Static introduced-log audit against prior owner: passed; no native code executed.",
+        "Static actual-CI feature/cfg review: all six new/changed pairing exports enabled under default features plus obfuscate for aarch64-apple-ios; binary presence pending compile-only CI."
+      ],
+      "tests_not_run": [
+        "Unchanged committed source-parity verifier against a new owner HEAD: no candidate commit exists.",
+        "Rust cargo check/test/build, rustfmt, cbindgen header generation or native link checks: no compiler execution.",
+        "macOS/iOS native builds, native fixtures, device pairing, authentication and runtime validation.",
+        "Actual generated archive/framework nm symbols and generated C header type/layout assertions: gate prepared but not executed."
+      ],
+      "source_parity_status": "reviewed_sync_candidate_pending_commit_parity_validation"
+    }
   }
 }
