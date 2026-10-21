@@ -21,6 +21,7 @@ use tracing::{debug, warn};
 use x25519_dalek::{EphemeralSecret, PublicKey as X25519PublicKey};
 
 pub mod errors;
+mod lockdown;
 mod opack;
 mod peer_device;
 mod responder;
@@ -31,6 +32,7 @@ mod tlv;
 pub mod tunnel;
 
 // export
+pub use lockdown::RemotePairingLockdownService;
 pub use peer_device::{PeerDevice, compute_auth_tag};
 pub use responder::{PAIRABLE_HOST_SERVICE_TYPE, PairableHost, PairableHostInfo};
 pub use rp_pairing_file::RpPairingFile;
@@ -97,6 +99,13 @@ impl<R: RpPairingSocketProvider> RemotePairingClient<R> {
         &self.encryption_key
     }
 
+    /// Performs the RPPairing handshake, then pair-verify, falling back to a full
+    /// pair-setup if verification fails.
+    ///
+    /// Both halves work against either of the services tvOS advertises. A
+    /// successful return does not mean the connection can carry a tunnel, though:
+    /// only `_remotepairing._tcp` serves [`Self::create_tcp_listener`], so on tvOS
+    /// pairing and tunnel creation are worth keeping as separate connections.
     pub async fn connect<Fut>(
         &mut self,
         pairing_file: &mut RpPairingFile,
@@ -105,16 +114,34 @@ impl<R: RpPairingSocketProvider> RemotePairingClient<R> {
     where
         Fut: std::future::Future<Output = String>,
     {
+        self.connect_with_options(pairing_file, true, pin_callback)
+            .await
+    }
+
+    pub async fn connect_with_options<Fut>(
+        &mut self,
+        pairing_file: &mut RpPairingFile,
+        pair_if_needed: bool,
+        pin_callback: impl Fn() -> Fut,
+    ) -> Result<(), IdeviceError>
+    where
+        Fut: std::future::Future<Output = String>,
+    {
         self.attempt_pair_verify().await?;
 
         if pairing_file.is_paired() {
-            if self.validate_pairing(pairing_file).await.is_err() {
-                self.pair(pairing_file, pin_callback).await?;
+            if let Err(e) = self.validate_pairing(pairing_file).await {
+                if !pair_if_needed {
+                    return Err(e);
+                }
+            } else {
+                return Ok(());
             }
-        } else {
-            self.pair(pairing_file, pin_callback).await?;
+        } else if !pair_if_needed {
+            return Err(RemotePairingError::PairVerifyFailed.into());
         }
-        Ok(())
+
+        self.pair(pairing_file, pin_callback).await
     }
 
     /// Returns peer device info captured during this client's successful `pair()` flow.
@@ -829,6 +856,12 @@ impl<R: RpPairingSocketProvider> RemotePairingClient<R> {
 
     /// Send a request to create a TCP tunnel listener on the device.
     /// Returns the port the device is listening on.
+    ///
+    /// Not every endpoint that accepts pairing serves this. tvOS advertises a
+    /// second `_remotepairing-manual-pairing._tcp` service which handles both
+    /// pair-setup and pair-verify but reportedly rejects this request, so a device
+    /// paired over that service must be reconnected over `_remotepairing._tcp`
+    /// before a tunnel can be requested.
     pub async fn create_tcp_listener(&mut self) -> Result<u16, IdeviceError> {
         let request = plist!({
             "request": {
@@ -849,9 +882,11 @@ impl<R: RpPairingSocketProvider> RemotePairingClient<R> {
         let port = find_in_plist(listener, "port")
             .or_else(|| find_in_plist(listener, "listenerPort"))
             .and_then(|p| p.as_unsigned_integer())
-            .ok_or(IdeviceError::UnexpectedResponse(
-                "missing port in createListener response".into(),
-            ))?;
+            .ok_or_else(|| {
+                IdeviceError::UnexpectedResponse(format!(
+                    "missing createListener.port in response: {response:?}"
+                ))
+            })?;
 
         Ok(port as u16)
     }

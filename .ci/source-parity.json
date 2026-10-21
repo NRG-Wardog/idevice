@@ -1,121 +1,261 @@
 {
   "owner": "idevice",
-  "upstream_base": "ebd7dadfc55d1c4facee3d11ecf5b28e20548b57",
-  "fork_commit": "764e139cb55d0b665aafd609118deb2e9753d1d9",
-  "branch": "migration/runtime-source-141776ba",
-  "behavior_differences": [],
+  "upstream_base": "3e55c8486b2057e40c1f74aaaa1155c82341cf76",
+  "previous_fork_commit": "803f9368e6b27a43d8a9f22dc0ec281c87883113",
+  "upstream_sync": {
+    "from_base": "ebd7dadfc55d1c4facee3d11ecf5b28e20548b57",
+    "upstream_release": "v0.1.68-ss-3e55c84",
+    "expected_merge_parents": [
+      "803f9368e6b27a43d8a9f22dc0ec281c87883113",
+      "3e55c8486b2057e40c1f74aaaa1155c82341cf76"
+    ],
+    "full_history_required": true,
+    "jktcp_pin": "32c0210f286b4fd16efe05be4f57167a9d94459b",
+    "candidate_commit_status": "pending_root_owned_two_parent_commit",
+    "compatibility_registry_status": "pending_exact_new_owner_commit_and_manifest_digest_binding"
+  },
+  "migration_provenance": {
+    "previous_manifest_commit": "803f9368e6b27a43d8a9f22dc0ec281c87883113",
+    "previous_manifest_path": ".ci/source-parity.json",
+    "previous_manifest_sha256": "f18a96918f406f01caa4afdd4fc0611d6e42d3a90881efaca733e776570898fa",
+    "original_migration_commit": "764e139cb55d0b665aafd609118deb2e9753d1d9",
+    "original_migration_branch": "migration/runtime-source-141776ba",
+    "previous_source_parity_status": "formatted_prepared_bytes_pass",
+    "notice": "NOTICE-NRG-Wardog"
+  },
+  "behavior_differences": [
+    "Preserve the NRG contiguous CoreDevice handshake, heartbeat lifecycle and timeout handling, 1340-byte TCP MSS ceiling, and transport logging callback.",
+    "Preserve maintained AFC and plist-array allocation ownership and stop the heartbeat when freeing the adapter.",
+    "Retain exact local-path jktcp 0.1.6 from the separately pinned NRG owner instead of the upstream registry dependency.",
+    "Return pairable-host TXT bytes using an exact-sized allocation compatible with the existing idevice_data_free ABI.",
+    "Allocate optional network-pairing peer C strings only when out_peer_device requests ownership.",
+    "Redact newly introduced Rust provider, pairing, personalization, nonce and incidental path diagnostics, including raw Result panic details; preserve pre-existing NRG diagnostics."
+  ],
+  "logging_review": {
+    "baseline_owner_commit": "803f9368e6b27a43d8a9f22dc0ec281c87883113",
+    "audit": "Introduced Rust diagnostic sinks reviewed; raw provider, pairing, personalization, nonce and incidental path diagnostics redacted. Existing NRG diagnostic function bytes preserved.",
+    "native_execution": false
+  },
   "files": [
     {
-      "path": "idevice/src/tunnel.rs",
-      "upstream_sha256": "817f1b070ec139dd9d1fcfd054a3c9f317f4fcddb0a234945cbe2470e27ce380",
-      "old_generated_sha256": "78ecf7ea51660f27bd78892e9d8f493846e8a98be364a63803d804f139461b8d",
-      "new_source_sha256": "78ecf7ea51660f27bd78892e9d8f493846e8a98be364a63803d804f139461b8d",
+      "path": "Cargo.lock",
+      "upstream_sha256": "3c1a7710f0cd02f9100e91b97c9f8abc6546f115f7f3255551c990628aea0e16",
+      "new_source_sha256": "fb66e7730952cc0e07e4a7b000aab461ebd5fca96b20afd0ab8798175d736492",
+      "git_mode": "100644",
+      "previous_owner_sha256": "f346555891f0b1cf4670fdac9d8c3cbdb057d4f7bc883d229afae176a3978e39",
       "mode": "0o644",
-      "subsystem": "Maintain contiguous CoreDevice tunnel handshake",
-      "commit": "6c6bfe3d3d2625c602c57b0e26afff84cf38aa59",
-      "git_mode": "100644"
+      "subsystem": "Maintain exact local jktcp dependency identity",
+      "migration_origin": {
+        "commit": "c00dcc6c1a789975f250678ab438a0287079b0e4",
+        "old_generated_sha256": "f346555891f0b1cf4670fdac9d8c3cbdb057d4f7bc883d229afae176a3978e39"
+      }
     },
     {
       "path": "ffi/src/afc.rs",
       "upstream_sha256": "71447c2547963cc417084039739cacaef9a6e45e6d348b1cfa667dcd823ff35e",
-      "old_generated_sha256": "f9fabb41e267c85891eac80aba562fe7ff913b2e8ece2e619086bdca9a6b5cda",
       "new_source_sha256": "508090fe4eae454a11d961831665965f6462fd328f7ad76a4a3ab004671a33d2",
+      "git_mode": "100644",
+      "previous_owner_sha256": "508090fe4eae454a11d961831665965f6462fd328f7ad76a4a3ab004671a33d2",
       "mode": "0o644",
       "subsystem": "Maintain local AFC runtime and FFI allocation ownership",
-      "commit": "80f24024ffec5eb8281dab165958427acc4dea1a",
-      "git_mode": "100644"
-    },
-    {
-      "path": "ffi/src/lib.rs",
-      "upstream_sha256": "8f00eec43ecb6f014d735014737192ab7c131c3554b3c5f807082083f7a458db",
-      "old_generated_sha256": "954b294a47bc172531c3e35aab59bc84d8d7e6682dc384fafe576c2095674dd1",
-      "new_source_sha256": "954b294a47bc172531c3e35aab59bc84d8d7e6682dc384fafe576c2095674dd1",
-      "mode": "0o644",
-      "subsystem": "Maintain local AFC runtime and FFI allocation ownership",
-      "commit": "80f24024ffec5eb8281dab165958427acc4dea1a",
-      "git_mode": "100644"
-    },
-    {
-      "path": "ffi/src/tunnel_provider.rs",
-      "upstream_sha256": "63bd51e11344d08c07f33041a74175ed2f3718bc15c992455acd478384992bf5",
-      "old_generated_sha256": "61e090ea9c1e2e75d2fb8f355965e929ed35a0a4f5e9471f9949c7504c3356f0",
-      "new_source_sha256": "c869d5c7ac0d68743223d627aa58fdecc397f7a97e073eaf3584046aff95891d",
-      "mode": "0o644",
-      "subsystem": "Maintain CoreDevice heartbeat and callback lifetimes",
-      "commit": "b7de2425e2c14a5decc271b582b22ae0f47b0c3d",
-      "git_mode": "100644"
+      "migration_origin": {
+        "commit": "80f24024ffec5eb8281dab165958427acc4dea1a",
+        "old_generated_sha256": "f9fabb41e267c85891eac80aba562fe7ff913b2e8ece2e619086bdca9a6b5cda"
+      }
     },
     {
       "path": "ffi/src/core_device_proxy.rs",
       "upstream_sha256": "d609b8d3ea964829c9635f9b5a74693be7fe7581f9a7afe91de8a807476dfc16",
-      "old_generated_sha256": "eae6645531b9544aeb339a724057817b6a27f05d0bb73fc107b3c1a1aab5313b",
       "new_source_sha256": "eae6645531b9544aeb339a724057817b6a27f05d0bb73fc107b3c1a1aab5313b",
+      "git_mode": "100644",
+      "previous_owner_sha256": "eae6645531b9544aeb339a724057817b6a27f05d0bb73fc107b3c1a1aab5313b",
       "mode": "0o644",
       "subsystem": "Maintain CoreDevice heartbeat and callback lifetimes",
-      "commit": "b7de2425e2c14a5decc271b582b22ae0f47b0c3d",
-      "git_mode": "100644"
+      "migration_origin": {
+        "commit": "b7de2425e2c14a5decc271b582b22ae0f47b0c3d",
+        "old_generated_sha256": "eae6645531b9544aeb339a724057817b6a27f05d0bb73fc107b3c1a1aab5313b"
+      }
+    },
+    {
+      "path": "ffi/src/lib.rs",
+      "upstream_sha256": "36111caf4c2bec04713859fb42b6ffd1ccb18850f22333fe224d62d642c411e3",
+      "new_source_sha256": "3f6581880c0b796d2c0ad611fa2de97f105a62c8cac0e3c40811d68f230087bb",
+      "git_mode": "100644",
+      "previous_owner_sha256": "954b294a47bc172531c3e35aab59bc84d8d7e6682dc384fafe576c2095674dd1",
+      "mode": "0o644",
+      "subsystem": "Maintain local AFC runtime and FFI allocation ownership",
+      "migration_origin": {
+        "commit": "80f24024ffec5eb8281dab165958427acc4dea1a",
+        "old_generated_sha256": "954b294a47bc172531c3e35aab59bc84d8d7e6682dc384fafe576c2095674dd1"
+      }
+    },
+    {
+      "path": "ffi/src/pairing_host.rs",
+      "upstream_sha256": "0c397ee3527df477b12a81f5ac66cd45c7353d4fd7943d0ae69eb985ec0a68a8",
+      "new_source_sha256": "dbb44dfe3bdb04c68dd9df5cf65aa5c4bfd138a41f0f53bd1d18c0c757f8b2ad",
+      "git_mode": "100644",
+      "previous_owner_sha256": null,
+      "mode": "0o644",
+      "subsystem": "Return pairable-host TXT bytes with an exact allocation layout matching idevice_data_free"
+    },
+    {
+      "path": "ffi/src/tunnel_provider.rs",
+      "upstream_sha256": "433f26938c71820dce1361e9ca934531695391c1a566b5163fef3e67dbf59f58",
+      "new_source_sha256": "e45174c39679ae7c7b01c77247647a153d768b8838dae56ecd280daa8c23d0d2",
+      "git_mode": "100644",
+      "previous_owner_sha256": "c869d5c7ac0d68743223d627aa58fdecc397f7a97e073eaf3584046aff95891d",
+      "mode": "0o644",
+      "subsystem": "Maintain CoreDevice heartbeat and callback lifetimes; allocate optional peer C strings only when the caller requests ownership",
+      "migration_origin": {
+        "commit": "b7de2425e2c14a5decc271b582b22ae0f47b0c3d",
+        "old_generated_sha256": "61e090ea9c1e2e75d2fb8f355965e929ed35a0a4f5e9471f9949c7504c3356f0"
+      }
     },
     {
       "path": "idevice/Cargo.toml",
-      "upstream_sha256": "5035ad9f2274dca3adab663a43792103766b92af00920bd96d83bf9c06e0d61b",
-      "old_generated_sha256": "68496dc1f0c3dd3bbb62b952ecfe472f17d8a0a5cabfed14f68468a801df0b88",
-      "new_source_sha256": "68496dc1f0c3dd3bbb62b952ecfe472f17d8a0a5cabfed14f68468a801df0b88",
+      "upstream_sha256": "25626cb8dadd573abe483a0b1f5577c15026954a615b3d445e9aa54b451a469c",
+      "new_source_sha256": "68417b615ed59fe9b6e22d2c43ee64cc085a19368c668477972e89d3caa1d427",
+      "git_mode": "100644",
+      "previous_owner_sha256": "68496dc1f0c3dd3bbb62b952ecfe472f17d8a0a5cabfed14f68468a801df0b88",
       "mode": "0o644",
       "subsystem": "Maintain exact local jktcp dependency identity",
-      "commit": "c00dcc6c1a789975f250678ab438a0287079b0e4",
-      "git_mode": "100644"
+      "migration_origin": {
+        "commit": "c00dcc6c1a789975f250678ab438a0287079b0e4",
+        "old_generated_sha256": "68496dc1f0c3dd3bbb62b952ecfe472f17d8a0a5cabfed14f68468a801df0b88"
+      }
     },
     {
-      "path": "Cargo.lock",
-      "upstream_sha256": "f6cb7304f4d9021380863c9931a7cf07e6b68fb0876eaf9157488977a5edc5df",
-      "old_generated_sha256": "f346555891f0b1cf4670fdac9d8c3cbdb057d4f7bc883d229afae176a3978e39",
-      "new_source_sha256": "f346555891f0b1cf4670fdac9d8c3cbdb057d4f7bc883d229afae176a3978e39",
+      "path": "idevice/src/services/core_device/file_service.rs",
+      "upstream_sha256": "b9598e895d48261033bd5dbb81255f5541638cae6769f586b65d4a32915fdf38",
+      "new_source_sha256": "15191048e3ed2c3ef0cc7ce3bee23b3d9be87b9587320ad73f3368cfbc21c7c6",
+      "git_mode": "100644",
+      "previous_owner_sha256": null,
       "mode": "0o644",
-      "subsystem": "Maintain exact local jktcp dependency identity",
-      "commit": "c00dcc6c1a789975f250678ab438a0287079b0e4",
-      "git_mode": "100644"
+      "subsystem": "Redact newly introduced provider, pairing, identity or payload diagnostics while preserving operation semantics"
+    },
+    {
+      "path": "idevice/src/services/core_device/icon_service.rs",
+      "upstream_sha256": "2917b74e57567a26a35173ea2ba0ea4f240a96017552c172845a4ac1cbf117ee",
+      "new_source_sha256": "89beaa32c2535bb7de793e7163b5fafa7533904e19f0a0432849cf8cdb6e57ad",
+      "git_mode": "100644",
+      "previous_owner_sha256": null,
+      "mode": "0o644",
+      "subsystem": "Redact newly introduced provider, pairing, identity or payload diagnostics while preserving operation semantics"
+    },
+    {
+      "path": "idevice/src/tss.rs",
+      "upstream_sha256": "fb6eb561264603bd3eaa3efa545d1bd6d2b2ec763f8b844f87fc730620c7ef83",
+      "new_source_sha256": "4fb71f10e3213ce5db618a61c06a91977996f9958a7310034a67c5877c03eae9",
+      "git_mode": "100644",
+      "previous_owner_sha256": "e7211b2a14d2d3070a135d52f11879a57e998e16a4bf159299e445109ced52c8",
+      "mode": "0o644",
+      "subsystem": "Redact newly introduced provider, pairing, identity or payload diagnostics while preserving operation semantics"
+    },
+    {
+      "path": "idevice/src/tunnel.rs",
+      "upstream_sha256": "817f1b070ec139dd9d1fcfd054a3c9f317f4fcddb0a234945cbe2470e27ce380",
+      "new_source_sha256": "78ecf7ea51660f27bd78892e9d8f493846e8a98be364a63803d804f139461b8d",
+      "git_mode": "100644",
+      "previous_owner_sha256": "78ecf7ea51660f27bd78892e9d8f493846e8a98be364a63803d804f139461b8d",
+      "mode": "0o644",
+      "subsystem": "Maintain contiguous CoreDevice tunnel handshake",
+      "migration_origin": {
+        "commit": "6c6bfe3d3d2625c602c57b0e26afff84cf38aa59",
+        "old_generated_sha256": "78ecf7ea51660f27bd78892e9d8f493846e8a98be364a63803d804f139461b8d"
+      }
+    },
+    {
+      "path": "tools/src/coredevice_configuration.rs",
+      "upstream_sha256": "9d4c7e8915c1960dee04bb43f9fe0df440aad01894bcc46b8190295e99da7e38",
+      "new_source_sha256": "b899a4b112e402e4a8008e67e267b207b02326fdabff14fe7d4415bbf8737978",
+      "git_mode": "100644",
+      "previous_owner_sha256": null,
+      "mode": "0o644",
+      "subsystem": "Redact newly introduced provider, pairing, identity or payload diagnostics while preserving operation semantics"
+    },
+    {
+      "path": "tools/src/coredevice_fileservice.rs",
+      "upstream_sha256": "f5255272c45368039d894e32b830e5f3bc66edb5299f090e87f7b829f9a72056",
+      "new_source_sha256": "73ad40ea72a2e77da4398874a246bd56c12f2751b380dfb9e625c3230a058bd8",
+      "git_mode": "100644",
+      "previous_owner_sha256": null,
+      "mode": "0o644",
+      "subsystem": "Redact newly introduced provider, pairing, identity or payload diagnostics while preserving operation semantics"
+    },
+    {
+      "path": "tools/src/coredevice_icon.rs",
+      "upstream_sha256": "7461638f03f60d0ace9cfc36b9659387031bc14eca8f76ffffc9265c6fa777ae",
+      "new_source_sha256": "4b8941aa0f3a6d71fa06fc3019cf4d8a5289318aa235733b75ce94a9f3b5271b",
+      "git_mode": "100644",
+      "previous_owner_sha256": null,
+      "mode": "0o644",
+      "subsystem": "Redact newly introduced provider, pairing, identity or payload diagnostics while preserving operation semantics"
+    },
+    {
+      "path": "tools/src/cryptexd.rs",
+      "upstream_sha256": "d8cf3f01329df8d10e473a43742504191a779ff875ac5f47e935fb8e35a140ad",
+      "new_source_sha256": "69856108d15de190f29a982db82ae72f108b9cd1a2e12aa673b5640a5e9733d8",
+      "git_mode": "100644",
+      "previous_owner_sha256": null,
+      "mode": "0o644",
+      "subsystem": "Redact newly introduced provider, pairing, identity or payload diagnostics while preserving operation semantics"
+    },
+    {
+      "path": "tools/src/remote_notification_proxy.rs",
+      "upstream_sha256": "56f62f849759f881da34a9e00d4164fbf9c150ba9a0439279b786cd52ae0d3b7",
+      "new_source_sha256": "95ab5aee1cbde0c9d398bec7014d6da080a52670c07bc1e81e955efb4af53a60",
+      "git_mode": "100644",
+      "previous_owner_sha256": null,
+      "mode": "0o644",
+      "subsystem": "Redact newly introduced provider, pairing, identity or payload diagnostics while preserving operation semantics"
+    },
+    {
+      "path": "tools/src/remotepairing_lockdown.rs",
+      "upstream_sha256": "2d90fcd9852354f561503bb91389a3c53f1c3bb1979020c7e6b42031087f6c08",
+      "new_source_sha256": "672c8cbe20afab7819131c0892e556bf5482c6713800e5bfd3fa4f32bb11c8ae",
+      "git_mode": "100644",
+      "previous_owner_sha256": null,
+      "mode": "0o644",
+      "subsystem": "Redact newly introduced provider, pairing, identity or payload diagnostics while preserving operation semantics"
     }
   ],
   "prepared_evidence_excluded": [],
   "tests_run": [
-    "git diff --check",
-    "exact changed source byte and mode comparison",
-    "Rust 1.98.1 cargo fmt --check --manifest-path idevice/ffi/Cargo.toml",
-    "all product bytes and modes equal independently formatted OLD generated source",
-    "Rust 1.98.1 cargo check --locked --manifest-path idevice/ffi/Cargo.toml --features obfuscate: passed with existing warnings"
+    "Static source review: exact candidate inventory and modes match the new upstream plus the exact reviewed frozen custom product paths and the existing metadata inventory.",
+    "Static preservation checks: all named NRG native functions and unaffected migrated source files preserve their prior implementation bytes.",
+    "Static FFI review: 104 used symbols, 215 direct call arities and 51 typed connector/cleanup reference sites match the minimuxer source candidate.",
+    "git diff --check against previous owner: passed before the metadata-only transition.",
+    "Full local source history and both previous-head and upstream ancestry from the recorded common base: verified.",
+    "Static introduced-log audit against prior owner: passed; no native code executed.",
+    "Static actual-CI feature/cfg review: all six new/changed pairing exports enabled under default features plus obfuscate for aarch64-apple-ios; binary presence pending compile-only CI."
   ],
   "tests_not_run": [
-    "macOS/iOS native build on the formatted owner commit"
+    "Unchanged committed source-parity verifier against a new owner HEAD: no candidate commit exists.",
+    "Rust cargo check/test/build, rustfmt, cbindgen header generation or native link checks: no compiler execution.",
+    "macOS/iOS native builds, native fixtures, device pairing, authentication and runtime validation.",
+    "Actual generated archive/framework nm symbols and generated C header type/layout assertions: gate prepared but not executed."
   ],
-  "source_parity_status": "formatted_prepared_bytes_pass",
+  "source_parity_status": "reviewed_sync_candidate_pending_commit_parity_validation",
   "metadata_files": [
     "NOTICE-NRG-Wardog",
     ".ci/source-parity.py",
     ".ci/source-parity.json"
   ],
-  "formatting_transition": {
-    "previous_owner_commit": "0182d7d8ce0c8bbeb440adbc989d88dc1d4c0789",
-    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
-    "cargo": "cargo 1.98.1 (797e8a9bc 2026-08-05)",
-    "rustfmt": "rustfmt 1.9.0-stable (48a229ceae 2026-09-01)",
-    "command": "cargo fmt --manifest-path idevice/ffi/Cargo.toml",
-    "source_basis": "Both the frozen OLD generated tree and the previous maintained owner were formatted independently with the pinned formatter; every product blob, symlink and gitlink matches afterward.",
-    "previous_status": "exact_prepared_bytes_pass",
-    "product_entries_compared": 453,
-    "changed_files": [
-      {
-        "path": "ffi/src/afc.rs",
-        "old_generated_sha256": "f9fabb41e267c85891eac80aba562fe7ff913b2e8ece2e619086bdca9a6b5cda",
-        "formatted_sha256": "508090fe4eae454a11d961831665965f6462fd328f7ad76a4a3ab004671a33d2",
-        "git_mode": "100644"
-      },
-      {
-        "path": "ffi/src/tunnel_provider.rs",
-        "old_generated_sha256": "61e090ea9c1e2e75d2fb8f355965e929ed35a0a4f5e9471f9949c7504c3356f0",
-        "formatted_sha256": "c869d5c7ac0d68743223d627aa58fdecc397f7a97e073eaf3584046aff95891d",
-        "git_mode": "100644"
-      }
+  "abi_review": {
+    "status": "static_actual_ci_cfg_review_pass_binary_presence_pending_ci",
+    "target": "aarch64-apple-ios",
+    "default_features_enabled": true,
+    "explicit_features": [
+      "obfuscate"
     ],
-    "behavior_differences": []
+    "required_features": [
+      "remote_pairing",
+      "tunnel_tcp_stack"
+    ],
+    "required_target_cfg": [
+      "unix"
+    ],
+    "export_count": 6,
+    "binary_and_header_verification": "Pending root-owned compile-only CI nm and generated-header checks; no native execution."
   }
 }

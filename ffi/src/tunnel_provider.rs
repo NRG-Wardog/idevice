@@ -19,7 +19,7 @@ use idevice::{
 };
 
 use crate::core_device_proxy::AdapterHandle;
-use crate::rp_pairing_file::RpPairingFileHandle;
+use crate::rp_pairing_file::{RpPairingFileHandle, RpPairingPeerDeviceC, peer_device_to_c};
 use crate::rsd::RsdHandshakeHandle;
 use crate::run_global_timeout;
 use crate::util::{SockAddr, idevice_sockaddr, idevice_socklen_t};
@@ -460,8 +460,12 @@ pub unsafe extern "C" fn tunnel_create_remotexpc(
 /// Use this when connecting to a device discovered via `_remotepairing._tcp`.
 /// The connection goes: direct TCP → RPPairing (JSON) → tunnel.
 ///
-/// This path only supports pair-verify (existing pairing file required).
-/// For initial pairing, use `tunnel_pair_usb`.
+/// `pairing_file` is used for pair-verify. If verification fails (typically
+/// because the device has never been paired with this host) a full pair-setup
+/// runs on the same connection and `pairing_file` is updated in place, so the
+/// caller should persist it afterwards regardless of whether it was freshly
+/// generated.
+///
 ///
 /// # Safety
 /// All pointer arguments must be valid and non-null (except `pin_callback`/`pin_context`).
@@ -472,6 +476,38 @@ pub unsafe extern "C" fn tunnel_create_rppairing(
     addr_len: idevice_socklen_t,
     hostname: *const c_char,
     pairing_file: *mut RpPairingFileHandle,
+    pin_callback: Option<extern "C" fn(context: *mut c_void) -> *const c_char>,
+    pin_context: *mut c_void,
+    out_adapter: *mut *mut AdapterHandle,
+    out_handshake: *mut *mut RsdHandshakeHandle,
+) -> *mut IdeviceFfiError {
+    unsafe {
+        tunnel_create_rppairing_with_options(
+            addr,
+            addr_len,
+            hostname,
+            pairing_file,
+            true,
+            pin_callback,
+            pin_context,
+            out_adapter,
+            out_handshake,
+        )
+    }
+}
+
+/// Creates a tunnel over the network via raw RPPairing protocol, with optional pairing fallback.
+///
+/// # Safety
+/// All pointer arguments must be valid and non-null (except `pin_callback`/`pin_context`).
+/// `pairing_file` is borrowed, not consumed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tunnel_create_rppairing_with_options(
+    addr: *const idevice_sockaddr,
+    addr_len: idevice_socklen_t,
+    hostname: *const c_char,
+    pairing_file: *mut RpPairingFileHandle,
+    pair_if_needed: bool,
     pin_callback: Option<extern "C" fn(context: *mut c_void) -> *const c_char>,
     pin_context: *mut c_void,
     out_adapter: *mut *mut AdapterHandle,
@@ -505,7 +541,7 @@ pub unsafe extern "C" fn tunnel_create_rppairing(
         let conn = RpPairingSocket::new(stream);
 
         let mut rpc = RemotePairingClient::new(conn, &host);
-        rpc.connect(rpf, async || get_pin(pin_callback, &ctx))
+        rpc.connect_with_options(rpf, pair_if_needed, async || get_pin(pin_callback, &ctx))
             .await?;
 
         finish_tunnel(&mut rpc, socket_addr).await
@@ -520,12 +556,28 @@ pub unsafe extern "C" fn tunnel_create_rppairing(
     }
 }
 
-/// Pairs with a device over the network via raw RPPairing protocol without creating a tunnel.
+/// Pairs with a device over the network via raw RPPairing, without creating a tunnel.
 ///
-/// Updates `pairing_file` in place with the paired peer identity.
+/// This is for tvOS.
+///
+/// On iOS `tunnel_create_rppairing` handles both halves on its own; this function
+/// is only needed there if you want to pair and connect as separate steps.
+///
+/// # Arguments
+/// * `addr` / `addr_len` - address of the pairing service to connect to.
+/// * `hostname` - name this host presents to the device.
+/// * `pairing_file` - borrowed, not consumed. Updated in place on success. Pass a
+///   freshly generated file (`rp_pairing_file_generate`) for a first-time pairing.
+/// * `pin_callback` / `pin_context` - invoked to obtain the PIN shown on the
+///   device. May be `NULL`.
+/// * `out_peer_device` - optional. If non-NULL, receives the paired device's
+///   identity, which the caller must free with `rppairing_peer_device_free`. Only
+///   written when a pair-setup actually ran; a successful pair-verify leaves it
+///   NULL.
 ///
 /// # Safety
-/// All pointer arguments must be valid and non-null.
+/// All pointer arguments must be valid and non-null except `pin_callback`,
+/// `pin_context`, and `out_peer_device`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rppairing_pair_network(
     addr: *const idevice_sockaddr,
@@ -534,6 +586,7 @@ pub unsafe extern "C" fn rppairing_pair_network(
     pairing_file: *mut RpPairingFileHandle,
     pin_callback: Option<extern "C" fn(context: *mut c_void) -> *const c_char>,
     pin_context: *mut c_void,
+    out_peer_device: *mut *mut RpPairingPeerDeviceC,
 ) -> *mut IdeviceFfiError {
     if addr.is_null() || hostname.is_null() || pairing_file.is_null() {
         return ffi_err!(IdeviceError::FfiInvalidArg);
@@ -549,6 +602,7 @@ pub unsafe extern "C" fn rppairing_pair_network(
     };
     let rpf = unsafe { &mut (*pairing_file).0 };
     let ctx = PinCtx(pin_context);
+    let wants_peer_device = !out_peer_device.is_null();
 
     let res = run_sync_local(async {
         let stream = run_global_timeout(|| tokio::net::TcpStream::connect(socket_addr))
@@ -557,11 +611,30 @@ pub unsafe extern "C" fn rppairing_pair_network(
         let conn = RpPairingSocket::new(stream);
 
         let mut rpc = RemotePairingClient::new(conn, &host);
-        rpc.connect(rpf, async || get_pin(pin_callback, &ctx)).await
+        rpc.connect(rpf, async || get_pin(pin_callback, &ctx))
+            .await?;
+
+        // Only allocate peer strings when the caller will own the result.
+        let peer_device = if wants_peer_device {
+            rpc.paired_peer_device().ok().map(peer_device_to_c)
+        } else {
+            None
+        };
+        Ok::<_, IdeviceError>(peer_device)
     });
 
     match res {
-        Ok(()) => null_mut(),
+        Ok(peer_device) => {
+            if !out_peer_device.is_null() {
+                unsafe {
+                    *out_peer_device = match peer_device {
+                        Some(p) => Box::into_raw(Box::new(p)),
+                        None => null_mut(),
+                    }
+                };
+            }
+            null_mut()
+        }
         Err(e) => ffi_err!(e),
     }
 }
