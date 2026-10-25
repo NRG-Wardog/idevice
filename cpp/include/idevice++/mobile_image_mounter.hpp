@@ -12,6 +12,9 @@ namespace IdeviceFFI {
 using MobileImageMounterPtr =
     std::unique_ptr<ImageMounterHandle, FnDeleter<ImageMounterHandle, image_mounter_free>>;
 
+// All optional info_plist arguments are borrowed for the duration of the call.
+// The caller retains the plist and must free it once after its final use, on
+// both success and failure; no mount method consumes that ownership.
 class MobileImageMounter {
   public:
     // Factory: connect via Provider

@@ -57,7 +57,7 @@ pub struct UsbmuxdDevice {
 pub enum UsbmuxdListenEvent {
     Connected(UsbmuxdDevice),
     /// The mux ID
-    Disconnected(u32),
+    Disconnected(u64),
 }
 
 /// Active connection to the usbmuxd service
@@ -359,7 +359,7 @@ impl UsbmuxdConnection {
     pub async fn listen<'a>(
         &'a mut self,
     ) -> Result<
-        Pin<Box<dyn Stream<Item = Result<UsbmuxdListenEvent, IdeviceError>> + 'a>>,
+        Pin<Box<dyn Stream<Item = Result<UsbmuxdListenEvent, IdeviceError>> + 'a + Send>>,
         IdeviceError,
     > {
         let req = crate::plist!(dict {
@@ -409,7 +409,7 @@ impl UsbmuxdConnection {
                                     if let Some(id) =
                                         msg.get("DeviceID").and_then(|v| v.as_unsigned_integer())
                                     {
-                                        let res = UsbmuxdListenEvent::Disconnected(id as u32);
+                                        let res = UsbmuxdListenEvent::Disconnected(id);
                                         return Ok(Some((res, conn)));
                                     } else {
                                         debug!("Device detached (unknown ID)");
@@ -520,6 +520,42 @@ mod packet_validation_tests {
                 std::time::Duration::from_secs(1), connection.read_plist(),
             ).await.expect("invalid header attempted to read a body");
             assert!(matches!(result, Err(IdeviceError::UnexpectedResponse(_))));
+        }
+    }
+}
+
+
+#[cfg(test)]
+mod listener_width_tests {
+    use super::*;
+    use futures::StreamExt;
+
+    #[tokio::test]
+    async fn real_listener_preserves_full_wire_disconnect_ids() {
+        let (socket, mut peer) = tokio::io::duplex(65536);
+        let mut handshake = plist::Dictionary::new();
+        handshake.insert("Number".into(), plist::Value::Integer(0u64.into()));
+        let bytes: Vec<u8> = RawPacket::new(handshake, 1, 8, 0).into();
+        peer.write_all(&bytes).await.unwrap();
+        let ids = [0, (1u64 << 32) + 7, u64::MAX];
+        for id in ids {
+            let mut message = plist::Dictionary::new();
+            message.insert("MessageType".into(), plist::Value::String("Detached".into()));
+            message.insert("DeviceID".into(), plist::Value::Integer(id.into()));
+            let bytes: Vec<u8> = RawPacket::new(message, 1, 8, 0).into();
+            peer.write_all(&bytes).await.unwrap();
+        }
+        let mut connection = UsbmuxdConnection::new(Box::new(socket), 0);
+        let mut stream = tokio::time::timeout(std::time::Duration::from_secs(2), connection.listen())
+            .await.expect("listen handshake timed out").unwrap();
+        fn assert_send<T: Send>(_: &T) {}
+        assert_send(&stream);
+        for expected in ids {
+            match tokio::time::timeout(std::time::Duration::from_secs(2), stream.next())
+                .await.expect("disconnect event timed out").unwrap().unwrap() {
+                UsbmuxdListenEvent::Disconnected(actual) => assert_eq!(actual, expected),
+                _ => panic!("Unexpected connection event"),
+            }
         }
     }
 }

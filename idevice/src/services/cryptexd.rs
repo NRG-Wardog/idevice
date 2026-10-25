@@ -87,6 +87,20 @@ pub struct CryptexInstallRequest {
 }
 
 impl CryptexInstallRequest {
+    /// Build the scalar request fields without network or transfer side effects.
+    fn install_arguments(&self) -> Dictionary {
+        crate::xpc!({
+            "auth": XPCObject::UInt64(self.auth),
+            "client-version": XPCObject::UInt64(CLIENT_VERSION),
+            "cryptex1-properties": XPCObject::Dictionary(self.cryptex1_properties.clone()),
+            "image-type-index": XPCObject::Int64(self.image_type_index),
+            "nonce-persistence": XPCObject::UInt64(self.nonce_persistence),
+            "persistence": XPCObject::UInt64(self.persistence)
+        })
+        .to_dictionary()
+        .unwrap()
+    }
+
     /// A request with the four `DDI` defaults Xcode uses
     /// ([`DDI_IMAGE_TYPE_INDEX`], [`DDI_PERSISTENCE`],
     /// [`DDI_NONCE_PERSISTENCE`], `auth = 0`).
@@ -265,16 +279,7 @@ impl<R: ReadWrite> CryptexdClient<R> {
             ("volumehash", &request.volumehash),
         ];
 
-        let mut argv = crate::xpc!({
-            "auth": XPCObject::UInt64(request.auth),
-            "client-version": XPCObject::UInt64(CLIENT_VERSION),
-            "cryptex1-properties": XPCObject::Dictionary(request.cryptex1_properties.clone()),
-            "image-type-index": XPCObject::Int64(request.image_type_index),
-            "nonce-persistence": XPCObject::UInt64(request.nonce_persistence),
-            "persistence": XPCObject::UInt64(request.nonce_persistence)
-        })
-        .to_dictionary()
-        .unwrap();
+        let mut argv = request.install_arguments();
 
         for (transfer_id, (key, payload)) in transfers.iter().enumerate() {
             let mut size = Dictionary::new();
@@ -448,4 +453,38 @@ pub async fn installed_ddi(
         .await?
         .into_iter()
         .find(|c| c.identifier == obf!("com.apple.MobileAsset.DDI")))
+}
+
+
+#[cfg(test)]
+mod persistence_tests {
+    use super::*;
+
+    fn synthetic_request() -> CryptexInstallRequest {
+        CryptexInstallRequest::new(vec![], vec![], vec![], vec![], vec![], Dictionary::new())
+    }
+
+    #[test]
+    fn ddi_defaults_keep_distinct_persistence_fields() {
+        let args = synthetic_request().install_arguments();
+        assert!(matches!(args.get("persistence"), Some(XPCObject::UInt64(2))));
+        assert!(matches!(args.get("nonce-persistence"), Some(XPCObject::UInt64(1))));
+        assert_eq!(args.len(), 6);
+    }
+
+    #[test]
+    fn custom_persistence_is_not_replaced_by_nonce_persistence() {
+        let mut request = synthetic_request();
+        request.persistence = u64::MAX;
+        request.nonce_persistence = 0;
+        request.auth = 7;
+        request.image_type_index = -3;
+        let args = request.install_arguments();
+        assert!(matches!(args.get("persistence"), Some(XPCObject::UInt64(u64::MAX))));
+        assert!(matches!(args.get("nonce-persistence"), Some(XPCObject::UInt64(0))));
+        assert!(matches!(args.get("auth"), Some(XPCObject::UInt64(7))));
+        assert!(matches!(args.get("image-type-index"), Some(XPCObject::Int64(-3))));
+        assert!(matches!(args.get("client-version"), Some(XPCObject::UInt64(CLIENT_VERSION))));
+        assert!(matches!(args.get("cryptex1-properties"), Some(XPCObject::Dictionary(_))));
+    }
 }

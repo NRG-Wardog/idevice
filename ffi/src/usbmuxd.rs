@@ -22,7 +22,7 @@ pub struct UsbmuxdConnectionHandle(pub UsbmuxdConnection);
 pub struct UsbmuxdAddrHandle(pub UsbmuxdAddr);
 pub struct UsbmuxdDeviceHandle(pub UsbmuxdDevice);
 pub struct UsbmuxdListenerHandle<'a>(
-    Pin<Box<dyn Stream<Item = Result<UsbmuxdListenEvent, IdeviceError>> + 'a>>,
+    Pin<Box<dyn Stream<Item = Result<UsbmuxdListenEvent, IdeviceError>> + 'a + Send>>,
 );
 
 /// Connects to a usbmuxd instance over TCP
@@ -355,7 +355,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_save_pair_record(
 ///
 /// # Safety
 /// Pass valid pointers. Free the stream with ``idevice_usbmuxd_listener_handle_free``.
-/// The stream must outlive the usbmuxd connection, and the usbmuxd connection cannot
+/// The usbmuxd connection must outlive the stream, and the usbmuxd connection cannot
 /// be used for other requests.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn idevice_usbmuxd_listen(
@@ -401,7 +401,8 @@ pub unsafe extern "C" fn idevice_usbmuxd_listener_handle_free(
 /// * `stream_handle` - The handle to the stream returned by listen
 /// * `connect` - The bool that will be set
 /// * `connection_device` - The pointer that will be filled on a connect event
-/// * `disconnection_id` - The mux ID that will be set on a disconnect event
+/// * `disconnection_id` - Full 64-bit mux ID; use a uint64_t output with matching generated headers.
+/// Outputs are cleared after valid-pointer checks, including service errors and end-of-stream.
 ///
 /// # Safety
 /// Pass valid pointers
@@ -410,7 +411,7 @@ pub unsafe extern "C" fn idevice_usbmuxd_listener_next(
     stream_handle: *mut UsbmuxdListenerHandle,
     connect: *mut bool,
     connection_device: *mut *mut UsbmuxdDeviceHandle,
-    disconnection_id: *mut u32,
+    disconnection_id: *mut u64,
 ) -> *mut IdeviceFfiError {
     if stream_handle.is_null()
         || connect.is_null()
@@ -418,6 +419,13 @@ pub unsafe extern "C" fn idevice_usbmuxd_listener_next(
         || disconnection_id.is_null()
     {
         return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+    // Defined empty outputs on disconnect, service error and end-of-stream.
+    // The caller must dispose of any previous connection_device before reuse.
+    unsafe {
+        *connect = false;
+        *connection_device = null_mut();
+        *disconnection_id = 0;
     }
     let stream = unsafe { &mut (*stream_handle).0 };
 
@@ -754,6 +762,50 @@ mod ownership_tests {
         assert!(!error.is_null());
         assert!(output.is_null());
         assert_eq!(drops.load(Ordering::SeqCst), 1);
+        unsafe { crate::idevice_error_free(error) };
+    }
+}
+
+
+#[cfg(test)]
+mod listener_abi_tests {
+    use super::*;
+
+    #[test]
+    fn actual_ffi_writes_full_width_disconnect_and_clears_stale_outputs() {
+        for id in [0, (1u64 << 32) + 7, u64::MAX] {
+            let stream = futures::stream::iter([Ok(UsbmuxdListenEvent::Disconnected(id))]);
+            let mut handle = UsbmuxdListenerHandle(Box::pin(stream));
+            let mut connected = true;
+            let mut device = std::ptr::NonNull::<UsbmuxdDeviceHandle>::dangling().as_ptr();
+            let mut output = 99u64;
+            let error = unsafe { idevice_usbmuxd_listener_next(&mut handle, &mut connected, &mut device, &mut output) };
+            assert!(error.is_null());
+            assert!(!connected);
+            assert!(device.is_null());
+            assert_eq!(output, id);
+            connected = true;
+            output = 99;
+            let error = unsafe { idevice_usbmuxd_listener_next(&mut handle, &mut connected, &mut device, &mut output) };
+            assert!(!error.is_null());
+            assert!(!connected && device.is_null() && output == 0);
+            unsafe { crate::idevice_error_free(error) };
+        }
+    }
+
+    #[test]
+    fn ffi_error_event_clears_outputs_and_null_input_is_rejected() {
+        let stream = futures::stream::iter([Err(IdeviceError::UnexpectedResponse("synthetic".into()))]);
+        let mut handle = UsbmuxdListenerHandle(Box::pin(stream));
+        let mut connected = true;
+        let mut device = null_mut();
+        let mut output = u64::MAX;
+        let error = unsafe { idevice_usbmuxd_listener_next(&mut handle, &mut connected, &mut device, &mut output) };
+        assert!(!error.is_null());
+        assert!(!connected && device.is_null() && output == 0);
+        unsafe { crate::idevice_error_free(error) };
+        let error = unsafe { idevice_usbmuxd_listener_next(null_mut(), &mut connected, &mut device, &mut output) };
+        assert!(!error.is_null());
         unsafe { crate::idevice_error_free(error) };
     }
 }

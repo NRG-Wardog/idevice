@@ -18,6 +18,21 @@ use idevice::RsdService as _;
 
 pub struct ImageMounterHandle(pub ImageMounter);
 
+/// Clone optional caller-owned plist data before entering the async service.
+///
+/// # Safety
+/// A non-null pointer must reference a live, aligned `PlistWrapper` and remain
+/// exclusively accessible for this call. The caller retains ownership on success and error;
+/// this function never takes a Box or frees the input allocation.
+unsafe fn clone_borrowed_info_plist(info_plist: *const c_void) -> Option<Value> {
+    if info_plist.is_null() {
+        None
+    } else {
+        Some(unsafe { &mut *(info_plist as *mut PlistWrapper) }.borrow_self().clone())
+    }
+}
+
+
 /// Connects to the Image Mounter service using a provider
 ///
 /// The caller retains ownership of `provider` on both success and failure.
@@ -298,7 +313,7 @@ pub unsafe extern "C" fn image_mounter_upload_image(
 /// * [`signature_len`] - Length of the signature data
 /// * [`trust_cache`] - Pointer to trust cache data (optional)
 /// * [`trust_cache_len`] - Length of trust cache data (0 if none)
-/// * [`info_plist`] - Pointer to info plist (optional)
+/// * [`info_plist`] - Optional borrowed plist; caller retains ownership on success and failure.
 ///
 /// # Returns
 /// An IdeviceFfiError on error, null on success
@@ -333,15 +348,7 @@ pub unsafe extern "C" fn image_mounter_mount_image(
         None
     };
 
-    let info_plist = if !info_plist.is_null() {
-        Some(
-            unsafe { Box::from_raw(info_plist as *mut Value) }
-                .as_ref()
-                .clone(),
-        )
-    } else {
-        None
-    };
+    let info_plist = unsafe { clone_borrowed_info_plist(info_plist) };
 
     let res: Result<(), IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
@@ -699,7 +706,7 @@ pub unsafe extern "C" fn image_mounter_roll_cryptex_nonce(
 /// * [`trust_cache_len`] - Length of the trust cache data
 /// * [`build_manifest`] - Pointer to the build manifest data
 /// * [`build_manifest_len`] - Length of the build manifest data
-/// * [`info_plist`] - Pointer to info plist (optional)
+/// * [`info_plist`] - Optional borrowed plist; caller retains ownership on success and failure.
 /// * [`unique_chip_id`] - The device's unique chip ID
 ///
 /// # Returns
@@ -730,15 +737,7 @@ pub unsafe extern "C" fn image_mounter_mount_personalized(
     let build_manifest_slice =
         unsafe { std::slice::from_raw_parts(build_manifest, build_manifest_len) };
 
-    let info_plist = if !info_plist.is_null() {
-        Some(
-            unsafe { Box::from_raw(info_plist as *mut Value) }
-                .as_ref()
-                .clone(),
-        )
-    } else {
-        None
-    };
+    let info_plist = unsafe { clone_borrowed_info_plist(info_plist) };
 
     let res: Result<(), IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
@@ -773,7 +772,7 @@ pub unsafe extern "C" fn image_mounter_mount_personalized(
 /// * [`trust_cache_len`] - Length of the trust cache data
 /// * [`build_manifest`] - Pointer to the build manifest data
 /// * [`build_manifest_len`] - Length of the build manifest data
-/// * [`info_plist`] - Pointer to info plist (optional)
+/// * [`info_plist`] - Optional borrowed plist; caller retains ownership on success and failure.
 /// * [`unique_chip_id`] - The device's unique chip ID
 ///
 /// # Returns
@@ -810,15 +809,7 @@ pub unsafe extern "C" fn image_mounter_mount_personalized_rsd(
     let build_manifest_slice =
         unsafe { std::slice::from_raw_parts(build_manifest, build_manifest_len) };
 
-    let info_plist = if !info_plist.is_null() {
-        Some(
-            unsafe { Box::from_raw(info_plist as *mut Value) }
-                .as_ref()
-                .clone(),
-        )
-    } else {
-        None
-    };
+    let info_plist = unsafe { clone_borrowed_info_plist(info_plist) };
 
     let res: Result<(), IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
@@ -855,7 +846,7 @@ pub unsafe extern "C" fn image_mounter_mount_personalized_rsd(
 /// * [`trust_cache_len`] - Length of the trust cache data
 /// * [`build_manifest`] - Pointer to the build manifest data
 /// * [`build_manifest_len`] - Length of the build manifest data
-/// * [`info_plist`] - Pointer to info plist (optional)
+/// * [`info_plist`] - Optional borrowed plist; caller retains ownership on success and failure.
 /// * [`unique_chip_id`] - The device's unique chip ID
 /// * [`callback`] - Progress callback function
 /// * [`context`] - User context to pass to callback
@@ -896,15 +887,7 @@ pub unsafe extern "C" fn image_mounter_mount_personalized_with_callback_rsd(
     let build_manifest_slice =
         unsafe { std::slice::from_raw_parts(build_manifest, build_manifest_len) };
 
-    let info_plist = if !info_plist.is_null() {
-        Some(
-            unsafe { Box::from_raw(info_plist as *mut Value) }
-                .as_ref()
-                .clone(),
-        )
-    } else {
-        None
-    };
+    let info_plist = unsafe { clone_borrowed_info_plist(info_plist) };
 
     let res: Result<(), IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
@@ -947,7 +930,7 @@ pub unsafe extern "C" fn image_mounter_mount_personalized_with_callback_rsd(
 /// * [`trust_cache_len`] - Length of the trust cache data
 /// * [`build_manifest`] - Pointer to the build manifest data
 /// * [`build_manifest_len`] - Length of the build manifest data
-/// * [`info_plist`] - Pointer to info plist (optional)
+/// * [`info_plist`] - Optional borrowed plist; caller retains ownership on success and failure.
 /// * [`unique_chip_id`] - The device's unique chip ID
 /// * [`callback`] - Progress callback function
 /// * [`context`] - User context to pass to callback
@@ -982,15 +965,7 @@ pub unsafe extern "C" fn image_mounter_mount_personalized_with_callback(
     let build_manifest_slice =
         unsafe { std::slice::from_raw_parts(build_manifest, build_manifest_len) };
 
-    let info_plist = if !info_plist.is_null() {
-        Some(
-            unsafe { Box::from_raw(info_plist as *mut Value) }
-                .as_ref()
-                .clone(),
-        )
-    } else {
-        None
-    };
+    let info_plist = unsafe { clone_borrowed_info_plist(info_plist) };
 
     let res: Result<(), IdeviceError> = run_sync_local(async move {
         let client_ref = unsafe { &mut (*client).0 };
@@ -1017,5 +992,42 @@ pub unsafe extern "C" fn image_mounter_mount_personalized_with_callback(
     match res {
         Ok(_) => null_mut(),
         Err(e) => ffi_err!(e),
+    }
+}
+
+
+#[cfg(test)]
+mod borrowed_plist_tests {
+    use super::*;
+
+    #[test]
+    fn optional_null_plist_is_absent() {
+        assert!(unsafe { clone_borrowed_info_plist(std::ptr::null()) }.is_none());
+    }
+
+    #[test]
+    fn caller_owned_wrapper_survives_repeated_independent_clones() {
+        let mut original = PlistWrapper::new_node(Value::Array(vec![Value::String("synthetic".into())]));
+        let pointer = (&mut original as *mut PlistWrapper).cast::<c_void>();
+        let mut first = unsafe { clone_borrowed_info_plist(pointer) }.unwrap();
+        let second = unsafe { clone_borrowed_info_plist(pointer) }.unwrap();
+        assert_eq!(first, original.borrow_self().clone());
+        assert_eq!(second, original.borrow_self().clone());
+        first.as_array_mut().unwrap().push(Value::Boolean(true));
+        assert_eq!(first.as_array().unwrap().len(), 2);
+        assert_eq!(second.as_array().unwrap().len(), 1);
+        drop(first);
+        drop(second);
+        assert_eq!(original.borrow_self().as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn caller_retains_single_heap_owner_after_clone_is_dropped() {
+        let mut original = Box::new(PlistWrapper::new_node(Value::Data(vec![1, 2, 3])));
+        let pointer = (&mut *original as *mut PlistWrapper).cast::<c_void>();
+        drop(unsafe { clone_borrowed_info_plist(pointer) });
+        assert_eq!(original.borrow_self().as_data().unwrap(), &[1, 2, 3]);
+        // The caller, not any mount variant, performs the sole owner drop.
+        drop(original);
     }
 }
