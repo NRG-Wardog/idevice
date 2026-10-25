@@ -43,6 +43,8 @@ pub unsafe extern "C" fn house_arrest_client_connect(
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
+    unsafe { *client = null_mut() };
+
     let res = run_sync_local(async {
         let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
 
@@ -137,7 +139,8 @@ pub unsafe extern "C" fn house_arrest_client_new(
 /// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
-/// `client` must be a allocated by this library
+/// `client` must be allocated by this library. With valid arguments it is consumed
+/// on both success and service failure and must not be used or freed again.
 /// `bundle_id` must be a NULL-terminated string
 /// `afc_client` must be a valid, non-null pointer where the new AFC client will be stored
 #[unsafe(no_mangle)]
@@ -149,6 +152,8 @@ pub unsafe extern "C" fn house_arrest_vend_container(
     if client.is_null() || bundle_id.is_null() || afc_client.is_null() {
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
+
+    unsafe { *afc_client = null_mut() };
 
     let bundle_id = unsafe { CStr::from_ptr(bundle_id) }.to_string_lossy();
     let client_ref = unsafe { Box::from_raw(client) }.0; // take ownership and drop
@@ -179,7 +184,8 @@ pub unsafe extern "C" fn house_arrest_vend_container(
 /// An IdeviceFfiError on error, null on success
 ///
 /// # Safety
-/// `client` must be a allocated by this library
+/// `client` must be allocated by this library. With valid arguments it is consumed
+/// on both success and service failure and must not be used or freed again.
 /// `bundle_id` must be a NULL-terminated string
 /// `afc_client` must be a valid, non-null pointer where the new AFC client will be stored
 #[unsafe(no_mangle)]
@@ -191,6 +197,8 @@ pub unsafe extern "C" fn house_arrest_vend_documents(
     if client.is_null() || bundle_id.is_null() || afc_client.is_null() {
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
+
+    unsafe { *afc_client = null_mut() };
 
     let bundle_id = unsafe { CStr::from_ptr(bundle_id) }.to_string_lossy();
     let client_ref = unsafe { Box::from_raw(client) }.0; // take ownership and drop

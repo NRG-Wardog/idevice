@@ -46,6 +46,10 @@ pub unsafe extern "C" fn idevice_tcp_provider_new(
     label: *const c_char,
     provider: *mut *mut IdeviceProviderHandle,
 ) -> *mut IdeviceFfiError {
+    if ip.is_null() || pairing_file.is_null() || label.is_null() || provider.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+    unsafe { *provider = null_mut() };
     let ip = ip as *const SockAddr;
     let (addr, scope_id) = match util::c_addr_to_rust(ip) {
         Ok(i) => i,
@@ -179,4 +183,63 @@ pub unsafe extern "C" fn idevice_provider_get_pairing_file(
         }
         Err(e) => ffi_err!(e),
     }
+}
+
+#[cfg(test)]
+mod ownership_tests {
+    use super::*;
+    use std::{future::Future, pin::Pin, sync::{Arc, atomic::{AtomicUsize, Ordering}}};
+    use idevice::{Idevice, IdeviceError, pairing_file::PairingFile};
+
+    #[derive(Debug)]
+    struct FailingProvider(Arc<AtomicUsize>);
+    impl Drop for FailingProvider {
+        fn drop(&mut self) { self.0.fetch_add(1, Ordering::SeqCst); }
+    }
+    impl IdeviceProvider for FailingProvider {
+        fn connect(&self, _: u16) -> Pin<Box<dyn Future<Output = Result<Idevice, IdeviceError>> + Send>> {
+            Box::pin(async { Err(IdeviceError::UnexpectedResponse("controlled fixture".into())) })
+        }
+        fn label(&self) -> &str { "ownership-test" }
+        fn get_pairing_file(&self) -> Pin<Box<dyn Future<Output = Result<PairingFile, IdeviceError>> + Send>> {
+            Box::pin(async { Err(IdeviceError::UnexpectedResponse("controlled fixture".into())) })
+        }
+    }
+
+    macro_rules! borrowed_provider_test {
+        ($name:ident, $connect:path) => {
+            #[test]
+            fn $name() {
+                let drops = Arc::new(AtomicUsize::new(0));
+                let provider = Box::into_raw(Box::new(IdeviceProviderHandle(
+                    Box::new(FailingProvider(drops.clone())),
+                )));
+                let null_output_error = unsafe { $connect(provider, null_mut()) };
+                assert!(!null_output_error.is_null());
+                assert_eq!(drops.load(Ordering::SeqCst), 0);
+                unsafe { crate::idevice_error_free(null_output_error) };
+                for _ in 0..2 {
+                    let mut output = null_mut();
+                    let error = unsafe { $connect(provider, &mut output) };
+                    assert!(!error.is_null());
+                    assert!(output.is_null());
+                    assert_eq!(drops.load(Ordering::SeqCst), 0);
+                    unsafe { crate::idevice_error_free(error) };
+                }
+                unsafe { idevice_provider_free(provider) };
+                assert_eq!(drops.load(Ordering::SeqCst), 1);
+            }
+        }
+    }
+    borrowed_provider_test!(lockdown_errors_preserve_provider, crate::lockdown::lockdownd_connect);
+    #[cfg(feature = "mobile_image_mounter")]
+    borrowed_provider_test!(image_mounter_errors_preserve_provider, crate::mobile_image_mounter::image_mounter_connect);
+    #[cfg(feature = "syslog_relay")]
+    borrowed_provider_test!(os_trace_errors_preserve_provider, crate::os_trace_relay::os_trace_relay_connect);
+    #[cfg(feature = "syslog_relay")]
+    borrowed_provider_test!(syslog_errors_preserve_provider, crate::syslog_relay::syslog_relay_connect_tcp);
+    #[cfg(feature = "springboardservices")]
+    borrowed_provider_test!(springboard_errors_preserve_provider, crate::springboardservices::springboard_services_connect);
+    #[cfg(feature = "house_arrest")]
+    borrowed_provider_test!(house_arrest_errors_preserve_provider, crate::house_arrest::house_arrest_client_connect);
 }

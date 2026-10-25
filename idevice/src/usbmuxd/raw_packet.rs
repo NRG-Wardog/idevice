@@ -64,6 +64,11 @@ impl TryFrom<&[u8]> for RawPacket {
             }
         });
 
+        if packet_size < 16 {
+            warn!("Raw packet size is smaller than its header");
+            return Err(());
+        }
+
         // Determine if we have enough data to parse
         if packet.len() < packet_size as usize {
             warn!("Not enough data to parse a raw packet body");
@@ -112,5 +117,39 @@ impl TryFrom<&[u8]> for RawPacket {
             tag: packet_tag,
             plist,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RawPacket;
+
+    #[test]
+    fn rejects_declared_lengths_smaller_than_header() {
+        for size in 0u32..16 {
+            let mut packet = [0u8; 16];
+            packet[..4].copy_from_slice(&size.to_le_bytes());
+            assert!(RawPacket::try_from(packet.as_slice()).is_err());
+        }
+    }
+
+    #[test]
+    fn rejects_truncated_headers_and_bodies() {
+        for length in 0..16 {
+            assert!(RawPacket::try_from(&[0u8; 16][..length]).is_err());
+        }
+        let mut packet = [0u8; 16];
+        packet[..4].copy_from_slice(&17u32.to_le_bytes());
+        assert!(RawPacket::try_from(packet.as_slice()).is_err());
+    }
+
+    #[test]
+    fn round_trips_valid_packet() {
+        let packet = RawPacket::new(plist::Dictionary::new(), 1, 8, 42);
+        let encoded: Vec<u8> = packet.into();
+        let decoded = RawPacket::try_from(encoded.as_slice()).unwrap();
+        assert_eq!(decoded.size as usize, encoded.len());
+        assert_eq!((decoded.version, decoded.message, decoded.tag), (1, 8, 42));
+        assert!(decoded.plist.is_empty());
     }
 }

@@ -14,6 +14,9 @@ pub struct SyslogRelayClientHandle(pub SyslogRelayClient);
 
 /// Automatically creates and connects to syslog relay, returning a client handle
 ///
+/// The caller retains ownership of `provider` on both success and failure.
+/// Free it with `idevice_provider_free` when it is no longer needed.
+///
 /// # Arguments
 /// * [`provider`] - An IdeviceProvider
 /// * [`client`] - On success, will be set to point to a newly allocated SyslogRelayClient handle
@@ -26,10 +29,12 @@ pub unsafe extern "C" fn syslog_relay_connect_tcp(
     provider: *mut IdeviceProviderHandle,
     client: *mut *mut SyslogRelayClientHandle,
 ) -> *mut IdeviceFfiError {
-    if provider.is_null() {
+    if provider.is_null() || client.is_null() {
         tracing::error!("Null pointer provided");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
+
+    unsafe { *client = null_mut() };
 
     let res: Result<SyslogRelayClient, IdeviceError> = run_sync_local(async move {
         let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
@@ -44,10 +49,7 @@ pub unsafe extern "C" fn syslog_relay_connect_tcp(
 
             null_mut()
         }
-        Err(e) => {
-            let _ = unsafe { Box::from_raw(provider) };
-            ffi_err!(e)
-        }
+        Err(e) => ffi_err!(e),
     }
 }
 

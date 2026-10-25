@@ -463,7 +463,11 @@ impl UsbmuxdConnection {
         self.socket.read_exact(&mut header_buffer).await?;
 
         // We are safe to unwrap as it only panics if the buffer isn't 4
-        let packet_size = u32::from_le_bytes(header_buffer[..4].try_into().unwrap()) - 16;
+        let packet_size = u32::from_le_bytes(header_buffer[..4].try_into().unwrap())
+            .checked_sub(16)
+            .ok_or_else(|| IdeviceError::UnexpectedResponse(
+                "usbmuxd packet size is smaller than its header".into(),
+            ))?;
         debug!("Reading {packet_size} bytes from muxer");
 
         let mut body_buffer = vec![0; packet_size as usize];
@@ -495,6 +499,27 @@ impl UsbmuxdDevice {
             udid: self.udid.clone(),
             device_id: self.device_id,
             label,
+        }
+    }
+}
+
+#[cfg(test)]
+mod packet_validation_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn rejects_short_declared_packet_before_reading_body() {
+        for size in 0u32..16 {
+            let (socket, mut peer) = tokio::io::duplex(16);
+            let mut header = [0u8; 16];
+            header[..4].copy_from_slice(&size.to_le_bytes());
+            peer.write_all(&header).await.unwrap();
+            let mut connection = UsbmuxdConnection::new(Box::new(socket), 0);
+            // Peer stays open: a body read would wait instead of returning.
+            let result = tokio::time::timeout(
+                std::time::Duration::from_secs(1), connection.read_plist(),
+            ).await.expect("invalid header attempted to read a body");
+            assert!(matches!(result, Err(IdeviceError::UnexpectedResponse(_))));
         }
     }
 }

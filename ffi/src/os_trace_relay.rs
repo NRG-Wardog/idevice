@@ -50,6 +50,9 @@ pub struct SyslogLabel {
 
 /// Connects to the relay with the given provider
 ///
+/// The caller retains ownership of `provider` on both success and failure.
+/// Free it with `idevice_provider_free` when it is no longer needed.
+///
 /// # Arguments
 /// * [`provider`] - A provider created by this library
 /// * [`client`] - A pointer where the handle will be allocated
@@ -64,10 +67,12 @@ pub unsafe extern "C" fn os_trace_relay_connect(
     provider: *mut IdeviceProviderHandle,
     client: *mut *mut OsTraceRelayClientHandle,
 ) -> *mut IdeviceFfiError {
-    if provider.is_null() {
+    if provider.is_null() || client.is_null() {
         tracing::error!("Null pointer provided");
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
+
+    unsafe { *client = null_mut() };
 
     let res: Result<OsTraceRelayClient, IdeviceError> = run_sync_local(async move {
         let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
@@ -80,10 +85,7 @@ pub unsafe extern "C" fn os_trace_relay_connect(
             unsafe { *client = Box::into_raw(boxed) };
             null_mut()
         }
-        Err(e) => {
-            let _ = unsafe { Box::from_raw(provider) };
-            ffi_err!(e)
-        }
+        Err(e) => ffi_err!(e),
     }
 }
 

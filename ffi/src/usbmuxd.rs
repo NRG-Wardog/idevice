@@ -231,12 +231,11 @@ pub unsafe extern "C" fn idevice_usbmuxd_connect_to_device(
         return ffi_err!(IdeviceError::FfiInvalidArg);
     }
 
-    // Take ownership of the connection handle
-    let conn = unsafe {
-        let conn = std::ptr::read(&(*usbmuxd_connection).0); // move the inner connection
-        drop(Box::from_raw(usbmuxd_connection)); // free the wrapper
-        conn
-    };
+    let conn = unsafe { Box::from_raw(usbmuxd_connection) }.0;
+    if label.is_null() || idevice.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+    unsafe { *idevice = null_mut() };
 
     let label = unsafe {
         match CStr::from_ptr(label).to_str() {
@@ -717,4 +716,44 @@ pub unsafe extern "C" fn idevice_usbmuxd_device_get_connection_type(
         idevice::usbmuxd::Connection::Unknown(_) => UsbmuxdConnectionType::Unknown,
     };
     ct as u8
+}
+
+#[cfg(test)]
+mod ownership_tests {
+    use super::*;
+    use std::{io, sync::{Arc, atomic::{AtomicUsize, Ordering}}, task::{Context, Poll}};
+    use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+
+    #[derive(Debug)]
+    struct DropSocket(Arc<AtomicUsize>);
+    impl Drop for DropSocket {
+        fn drop(&mut self) { self.0.fetch_add(1, Ordering::SeqCst); }
+    }
+    impl AsyncRead for DropSocket {
+        fn poll_read(self: Pin<&mut Self>, _: &mut Context<'_>, _: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Err(io::Error::from(io::ErrorKind::UnexpectedEof)))
+        }
+    }
+    impl AsyncWrite for DropSocket {
+        fn poll_write(self: Pin<&mut Self>, _: &mut Context<'_>, _: &[u8]) -> Poll<io::Result<usize>> {
+            Poll::Ready(Err(io::Error::from(io::ErrorKind::BrokenPipe)))
+        }
+        fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> { Poll::Ready(Ok(())) }
+        fn poll_shutdown(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> { Poll::Ready(Ok(())) }
+    }
+
+    #[test]
+    fn consumed_connection_drops_socket_exactly_once_on_invalid_label() {
+        let drops = Arc::new(AtomicUsize::new(0));
+        let connection = Box::into_raw(Box::new(UsbmuxdConnectionHandle(
+            UsbmuxdConnection::new(Box::new(DropSocket(drops.clone())), 0),
+        )));
+        let label = [0xffu8, 0];
+        let mut output = null_mut();
+        let error = unsafe { idevice_usbmuxd_connect_to_device(connection, 1, 1, label.as_ptr().cast(), &mut output) };
+        assert!(!error.is_null());
+        assert!(output.is_null());
+        assert_eq!(drops.load(Ordering::SeqCst), 1);
+        unsafe { crate::idevice_error_free(error) };
+    }
 }
