@@ -189,6 +189,15 @@ pub unsafe extern "C" fn misagent_copy_all(
     let res: Result<Vec<Vec<u8>>, IdeviceError> =
         run_sync_local(async { unsafe { &mut *client }.0.copy_all().await });
 
+    unsafe { export_profiles(res, out_profiles, out_profiles_len, out_count) }
+}
+
+// No FFI pointers escape before the read-only transaction fully completes.
+unsafe fn export_profiles(
+    res: Result<Vec<Vec<u8>>, IdeviceError>,
+    out_profiles: *mut *mut *mut u8, out_profiles_len: *mut *mut libc::size_t,
+    out_count: *mut libc::size_t,
+) -> *mut IdeviceFfiError {
     match res {
         Ok(profiles) => {
             let count = profiles.len();
@@ -217,6 +226,64 @@ pub unsafe extern "C" fn misagent_copy_all(
         }
         Err(e) => ffi_err!(e),
     }
+}
+
+const PROFILE_READBACK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+async fn bounded_profile_readback<F>(query: F, limit: std::time::Duration) -> Result<Vec<Vec<u8>>, IdeviceError>
+where F: std::future::Future<Output = Result<Vec<Vec<u8>>, IdeviceError>> {
+    tokio::time::timeout(limit, query).await.map_err(|_| IdeviceError::Timeout)?
+}
+
+/// Read installed profiles with a ten-second native deadline covering service
+/// connection and CopyAll. The provider is borrowed; only the new query client
+/// is dropped on completion or timeout. No installation or reconnect is issued.
+/// # Safety
+/// Provider must be a live exclusively-used handle for this call. Output pointers
+/// must be writable. Returned arrays must be freed with misagent_free_profiles.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn misagent_read_profiles(
+    provider: *mut IdeviceProviderHandle,
+    out_profiles: *mut *mut *mut u8, out_profiles_len: *mut *mut libc::size_t,
+    out_count: *mut libc::size_t,
+) -> *mut IdeviceFfiError {
+    if out_profiles.is_null() || out_profiles_len.is_null() || out_count.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+    unsafe { *out_profiles = null_mut(); *out_profiles_len = null_mut(); *out_count = 0; }
+    if provider.is_null() { return ffi_err!(IdeviceError::FfiInvalidArg); }
+    let result = run_sync_local(bounded_profile_readback(async {
+        let provider_ref: &dyn IdeviceProvider = unsafe { &*(*provider).0 };
+        let mut client = MisagentClient::connect(provider_ref).await?;
+        client.copy_all().await
+    }, PROFILE_READBACK_TIMEOUT));
+    unsafe { export_profiles(result, out_profiles, out_profiles_len, out_count) }
+}
+
+/// Read profiles over an existing RSD adapter/handshake with the same bounded
+/// owned-client lifetime as misagent_read_profiles. No tunnel is created here.
+/// # Safety
+/// Adapter and handshake must be live, paired and exclusively borrowed for this
+/// call. Output pointers must be writable; free results with misagent_free_profiles.
+#[cfg(all(feature = "core_device_proxy", feature = "rsd"))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn misagent_read_profiles_rsd(
+    provider: *mut AdapterHandle, handshake: *mut RsdHandshakeHandle,
+    out_profiles: *mut *mut *mut u8, out_profiles_len: *mut *mut libc::size_t,
+    out_count: *mut libc::size_t,
+) -> *mut IdeviceFfiError {
+    if out_profiles.is_null() || out_profiles_len.is_null() || out_count.is_null() {
+        return ffi_err!(IdeviceError::FfiInvalidArg);
+    }
+    unsafe { *out_profiles = null_mut(); *out_profiles_len = null_mut(); *out_count = 0; }
+    if provider.is_null() || handshake.is_null() { return ffi_err!(IdeviceError::FfiInvalidArg); }
+    let result = run_sync_local(bounded_profile_readback(async {
+        let provider_ref = unsafe { &mut (*provider).0 };
+        let handshake_ref = unsafe { &mut (*handshake).0 };
+        let mut client = MisagentClient::connect_rsd(provider_ref, handshake_ref).await?;
+        client.copy_all().await
+    }, PROFILE_READBACK_TIMEOUT));
+    unsafe { export_profiles(result, out_profiles, out_profiles_len, out_count) }
 }
 
 /// Frees profiles array returned by misagent_copy_all
@@ -264,5 +331,101 @@ pub unsafe extern "C" fn misagent_client_free(handle: *mut MisagentClientHandle)
     if !handle.is_null() {
         tracing::debug!("Freeing misagent_client");
         let _ = unsafe { Box::from_raw(handle) };
+    }
+}
+
+#[cfg(test)]
+mod bounded_profile_readback_tests {
+    use super::*;
+    use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+    struct QueryOwner(Arc<AtomicUsize>);
+    impl Drop for QueryOwner { fn drop(&mut self) { self.0.fetch_add(1, Ordering::SeqCst); } }
+
+    #[derive(Debug)]
+    struct FixtureProvider {
+        drops: Arc<AtomicUsize>, query_drops: Arc<AtomicUsize>, pending: bool,
+    }
+    impl Drop for FixtureProvider {
+        fn drop(&mut self) { self.drops.fetch_add(1, Ordering::SeqCst); }
+    }
+    impl IdeviceProvider for FixtureProvider {
+        fn label(&self) -> &str { "non-secret-readback-fixture" }
+        fn connect(&self, _port: u16) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<idevice::Idevice, IdeviceError>> + Send>> {
+            let owner = QueryOwner(self.query_drops.clone());
+            let pending = self.pending;
+            Box::pin(async move {
+                let _owner = owner;
+                if pending { std::future::pending().await }
+                else { Err(IdeviceError::UnexpectedResponse("fixture_connect_failure".into())) }
+            })
+        }
+        fn get_pairing_file(&self) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<idevice::pairing_file::PairingFile, IdeviceError>> + Send>> {
+            Box::pin(async { Err(IdeviceError::UnexpectedResponse("fixture_pairing_not_requested".into())) })
+        }
+    }
+    fn exercise_exported_transaction(pending: bool) {
+        let drops = Arc::new(AtomicUsize::new(0));
+        let query_drops = Arc::new(AtomicUsize::new(0));
+        let mut provider = Box::new(IdeviceProviderHandle(Box::new(FixtureProvider {
+            drops: drops.clone(), query_drops: query_drops.clone(), pending,
+        })));
+        let mut profiles = std::ptr::dangling_mut::<*mut u8>();
+        let mut lengths = std::ptr::dangling_mut::<usize>();
+        let mut count = 99;
+        let error = unsafe { misagent_read_profiles(&mut *provider, &mut profiles, &mut lengths, &mut count) };
+        assert!(!error.is_null());
+        assert!(profiles.is_null() && lengths.is_null() && count == 0);
+        assert_eq!(query_drops.load(Ordering::SeqCst), 1);
+        assert_eq!(drops.load(Ordering::SeqCst), 0, "borrowed provider must survive");
+        unsafe { crate::idevice_error_free(error) };
+        drop(provider);
+        assert_eq!(drops.load(Ordering::SeqCst), 1);
+    }
+    #[test]
+    fn exported_failure_keeps_provider_and_clears_outputs() { exercise_exported_transaction(false); }
+    #[test]
+    fn exported_deadline_drops_query_before_return_not_provider() { exercise_exported_transaction(true); }
+
+    #[tokio::test]
+    async fn timeout_drops_owned_query_before_return() {
+        let drops = Arc::new(AtomicUsize::new(0));
+        let owner = QueryOwner(drops.clone());
+        let result = bounded_profile_readback(async move {
+            let _owner = owner;
+            std::future::pending::<Result<Vec<Vec<u8>>, IdeviceError>>().await
+        }, std::time::Duration::from_millis(10)).await;
+        assert!(matches!(result, Err(IdeviceError::Timeout)));
+        assert_eq!(drops.load(Ordering::SeqCst), 1);
+    }
+    #[tokio::test]
+    async fn successful_query_drops_owner_and_preserves_bytes() {
+        let drops = Arc::new(AtomicUsize::new(0));
+        let owner = QueryOwner(drops.clone());
+        let result = bounded_profile_readback(async move {
+            let _owner = owner; Ok(vec![vec![1,2,3]])
+        }, std::time::Duration::from_secs(1)).await.unwrap();
+        assert_eq!(drops.load(Ordering::SeqCst), 1);
+        assert_eq!(result, vec![vec![1,2,3]]);
+    }
+    #[test]
+    fn invalid_provider_zeros_outputs() {
+        let mut profiles = std::ptr::dangling_mut::<*mut u8>();
+        let mut lengths = std::ptr::dangling_mut::<usize>();
+        let mut count = 999;
+        let error = unsafe { misagent_read_profiles(null_mut(), &mut profiles, &mut lengths, &mut count) };
+        assert!(!error.is_null());
+        assert!(profiles.is_null() && lengths.is_null() && count == 0);
+        unsafe { crate::idevice_error_free(error) };
+    }
+    #[test]
+    fn exported_buffers_roundtrip_and_free() {
+        let mut profiles = null_mut(); let mut lengths = null_mut(); let mut count = 0;
+        let error = unsafe { export_profiles(Ok(vec![vec![1,2], vec![3]]), &mut profiles, &mut lengths, &mut count) };
+        assert!(error.is_null()); assert_eq!(count, 2);
+        unsafe {
+            assert_eq!(std::slice::from_raw_parts(*profiles, *lengths), &[1,2]);
+            assert_eq!(std::slice::from_raw_parts(*profiles.add(1), *lengths.add(1)), &[3]);
+            misagent_free_profiles(profiles, lengths, count);
+        }
     }
 }

@@ -184,28 +184,83 @@ impl MisagentClient {
 
         self.idevice.send_plist(req).await?;
 
-        let mut res = self.idevice.read_plist().await?;
-        match res.remove("Payload") {
-            Some(plist::Value::Array(a)) => {
-                let mut res = Vec::new();
-                for profile in a {
-                    if let Some(profile) = profile.as_data() {
-                        res.push(profile.to_vec());
-                    } else {
-                        warn!("Misagent CopyAll did not return data plists");
-                        return Err(IdeviceError::UnexpectedResponse(
-                            "CopyAll Payload array contains non-data entry".into(),
-                        ));
-                    }
-                }
-                Ok(res)
-            }
-            _ => {
-                warn!("Did not get a payload of provisioning profiles as an array");
-                Err(IdeviceError::UnexpectedResponse(
-                    "missing Payload array in CopyAll response".into(),
-                ))
-            }
+        let response = self.idevice.read_plist().await?;
+        decode_copy_all_response(response)
+    }
+}
+
+// Bounds apply before FFI duplicates buffers, not to the transport plist frame.
+const MAX_PROFILE_COUNT: usize = 4096;
+const MAX_PROFILE_BYTES: usize = 1_048_576;
+const MAX_PROFILE_TOTAL_BYTES: usize = 33_554_432;
+
+fn decode_copy_all_response(mut response: plist::Dictionary) -> Result<Vec<Vec<u8>>, IdeviceError> {
+    match response.remove("Status") {
+        Some(plist::Value::Integer(status)) if status.as_unsigned() == Some(0) => {}
+        _ => return Err(IdeviceError::UnexpectedResponse("profile_readback_status_invalid".into())),
+    }
+    let Some(plist::Value::Array(payload)) = response.remove("Payload") else {
+        return Err(IdeviceError::UnexpectedResponse("profile_readback_payload_invalid".into()));
+    };
+    if payload.len() > MAX_PROFILE_COUNT {
+        return Err(IdeviceError::UnexpectedResponse("profile_readback_count_invalid".into()));
+    }
+    let mut profiles = Vec::with_capacity(payload.len());
+    let mut total = 0usize;
+    for value in payload {
+        let plist::Value::Data(profile) = value else {
+            return Err(IdeviceError::UnexpectedResponse("profile_readback_payload_invalid".into()));
+        };
+        if profile.is_empty() || profile.len() > MAX_PROFILE_BYTES
+            || total > MAX_PROFILE_TOTAL_BYTES - profile.len() {
+            return Err(IdeviceError::UnexpectedResponse("profile_readback_size_invalid".into()));
         }
+        total += profile.len();
+        profiles.push(profile);
+    }
+    Ok(profiles)
+}
+
+#[cfg(test)]
+mod profile_readback_tests {
+    use super::*;
+    fn response(status: plist::Value, payload: plist::Value) -> plist::Dictionary {
+        let mut result = plist::Dictionary::new();
+        result.insert("Status".into(), status);
+        result.insert("Payload".into(), payload);
+        result
+    }
+    fn valid(payload: Vec<plist::Value>) -> plist::Dictionary {
+        response(plist::Value::Integer(0.into()), plist::Value::Array(payload))
+    }
+    #[test]
+    fn success_and_empty_store_are_observations() {
+        assert_eq!(decode_copy_all_response(valid(vec![plist::Value::Data(vec![1,2])])).unwrap(), vec![vec![1,2]]);
+        assert!(decode_copy_all_response(valid(vec![])).unwrap().is_empty());
+    }
+    #[test]
+    fn status_is_mandatory_integer_zero() {
+        for status in [plist::Value::Boolean(false), plist::Value::Boolean(true),
+            plist::Value::Real(0.0), plist::Value::String("0".into()),
+            plist::Value::Integer(1.into()), plist::Value::Integer((-1).into())] {
+            assert!(decode_copy_all_response(response(status, plist::Value::Array(vec![]))).is_err());
+        }
+        let mut missing = valid(vec![]); missing.remove("Status");
+        assert!(decode_copy_all_response(missing).is_err());
+    }
+    #[test]
+    fn payload_must_be_complete_data_array() {
+        let mut missing = valid(vec![]); missing.remove("Payload");
+        assert!(decode_copy_all_response(missing).is_err());
+        assert!(decode_copy_all_response(response(plist::Value::Integer(0.into()), plist::Value::String("bad".into()))).is_err());
+        assert!(decode_copy_all_response(valid(vec![plist::Value::Data(vec![1]), plist::Value::Boolean(false)])).is_err());
+        assert!(decode_copy_all_response(valid(vec![plist::Value::Data(vec![])])).is_err());
+    }
+    #[test]
+    fn bounds_fail_closed_without_truncation() {
+        assert!(decode_copy_all_response(valid(vec![plist::Value::Data(vec![1]); MAX_PROFILE_COUNT + 1])).is_err());
+        assert!(decode_copy_all_response(valid(vec![plist::Value::Data(vec![1; MAX_PROFILE_BYTES + 1])])).is_err());
+        assert!(decode_copy_all_response(valid(vec![plist::Value::Data(vec![1; MAX_PROFILE_BYTES]); 33])).is_err());
+        assert_eq!(decode_copy_all_response(valid(vec![plist::Value::Data(vec![1; MAX_PROFILE_BYTES]); 32])).unwrap().len(), 32);
     }
 }
